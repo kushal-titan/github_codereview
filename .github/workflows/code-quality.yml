@@ -80,8 +80,7 @@ jobs:
             --base-ref "$BASE_REF" \
             --pr-number "$PR_NUMBER" \
             --pr-url "$PR_URL" \
-            --pr-author "$PR_AUTHOR_EMAIL" \
-            --additional-recipients "$OUTLOOK_ADDITIONAL_RECIPIENTS"
+            --pr-author "$PR_AUTHOR_EMAIL"
 
       - name: 💬 Post or Update PR Quality Report Comment
         if: github.event_name == 'pull_request' && always()

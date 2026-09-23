@@ -26,7 +26,7 @@ namespace CodeMonitor
             string prAuthorEmail = GetArgValue(args, "--pr-author") ?? Environment.GetEnvironmentVariable("PR_AUTHOR_EMAIL") ?? "";
             bool dryRun = args.Contains("--dry-run") || bool.TryParse(Environment.GetEnvironmentVariable("DRY_RUN"), out var dr) && dr;
 
-            var config = new QualityConfig();
+            var config = QualityConfig.Load(targetDir);
             var gitDiffService = new GitDiffService();
             var githubReporter = new GitHubReporter();
             var emailService = new EmailService();
@@ -131,6 +131,13 @@ namespace CodeMonitor
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_LEAD_EMAIL"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_MANAGER_EMAIL"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_CC_EMAILS"));
+                if (config.AdditionalRecipients != null)
+                {
+                    foreach (var extra in config.AdditionalRecipients)
+                    {
+                        CollectEmails(extra);
+                    }
+                }
 
                 string? additionalRecipients = additionalList.Count > 0 ? string.Join(", ", additionalList) : null;
                 string smtpServer = Environment.GetEnvironmentVariable("OUTLOOK_SMTP_SERVER") ?? "smtp.office365.com";

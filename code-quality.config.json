@@ -1,0 +1,10 @@
+{
+  "maxMethodLines": 50,
+  "maxCyclomaticComplexity": 10,
+  "maxParameterCount": 4,
+  "maxNestingDepth": 3,
+  "failOnErrors": true,
+  "additionalRecipients": [
+    "lead@titan.co.in"
+  ]
+}
