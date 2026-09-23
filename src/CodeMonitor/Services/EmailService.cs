@@ -12,7 +12,7 @@ namespace CodeMonitor.Services
 {
     public class EmailService
     {
-        public bool SendReport(AnalysisReport report, string? senderEmail, string? appPassword, string? recipientEmail, string smtpServer = "smtp.office365.com", int smtpPort = 587)
+        public bool SendReport(AnalysisReport report, string? senderEmail, string? appPassword, string? recipientEmail, string? additionalRecipients = null, string smtpServer = "smtp.office365.com", int smtpPort = 587)
         {
             if (string.IsNullOrWhiteSpace(senderEmail) || string.IsNullOrWhiteSpace(appPassword))
             {
@@ -29,6 +29,21 @@ namespace CodeMonitor.Services
                 var message = new MimeMessage();
                 message.From.Add(new MailboxAddress("Code Quality Monitor Bot", senderEmail));
                 message.To.Add(new MailboxAddress(report.AuthorName.Length > 0 ? report.AuthorName : "Developer", targetRecipient));
+
+                // Add configurable additional recipients (Manager, Reviewer, Team Leads)
+                if (!string.IsNullOrWhiteSpace(additionalRecipients))
+                {
+                    var extraEmails = additionalRecipients.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var email in extraEmails)
+                    {
+                        var trimmed = email.Trim();
+                        if (!string.IsNullOrWhiteSpace(trimmed) && trimmed.Contains("@") && !trimmed.Equals(targetRecipient, StringComparison.OrdinalIgnoreCase))
+                        {
+                            message.Cc.Add(new MailboxAddress("Reviewer / Manager", trimmed));
+                            Console.WriteLine($"[EmailService] Added CC recipient: {trimmed}");
+                        }
+                    }
+                }
 
                 string prInfo = !string.IsNullOrWhiteSpace(report.PullRequestNumber) ? $"PR #{report.PullRequestNumber}" : report.Branch;
                 if (report.IsPassed)
@@ -56,7 +71,7 @@ namespace CodeMonitor.Services
                 Console.WriteLine($"[EmailService] Authenticating as {senderEmail}...");
                 client.Authenticate(senderEmail, appPassword);
                 
-                Console.WriteLine($"[EmailService] Dispatching user-friendly email to PR author: {targetRecipient}...");
+                Console.WriteLine($"[EmailService] Dispatching email to PR author: {targetRecipient}...");
                 client.Send(message);
                 client.Disconnect(true);
 

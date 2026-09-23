@@ -108,10 +108,14 @@ namespace CodeMonitor
                 string? recipientEmail = !string.IsNullOrWhiteSpace(report.AuthorEmail)
                     ? report.AuthorEmail
                     : Environment.GetEnvironmentVariable("OUTLOOK_RECIPIENT_EMAIL");
+                string? additionalRecipients = GetArgValue(args, "--additional-recipients", "--cc")
+                    ?? Environment.GetEnvironmentVariable("OUTLOOK_ADDITIONAL_RECIPIENTS")
+                    ?? Environment.GetEnvironmentVariable("OUTLOOK_MANAGER_EMAIL")
+                    ?? Environment.GetEnvironmentVariable("OUTLOOK_CC_EMAILS");
                 string smtpServer = Environment.GetEnvironmentVariable("OUTLOOK_SMTP_SERVER") ?? "smtp.office365.com";
                 int.TryParse(Environment.GetEnvironmentVariable("OUTLOOK_SMTP_PORT") ?? "587", out int smtpPort);
 
-                emailService.SendReport(report, senderEmail, appPassword, recipientEmail, smtpServer, smtpPort);
+                emailService.SendReport(report, senderEmail, appPassword, recipientEmail, additionalRecipients, smtpServer, smtpPort);
             }
 
             // 5. Exit code determines if CI workflow passes or fails (blocking PR)
