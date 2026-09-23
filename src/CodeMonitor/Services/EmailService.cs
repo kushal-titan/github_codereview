@@ -28,9 +28,12 @@ namespace CodeMonitor.Services
             {
                 var message = new MimeMessage();
                 message.From.Add(new MailboxAddress("Code Quality Monitor Bot", senderEmail));
-                message.To.Add(new MailboxAddress(report.AuthorName.Length > 0 ? report.AuthorName : "Developer", targetRecipient));
 
-                // Add configurable additional recipients (Manager, Reviewer, Team Leads)
+                // Add primary recipient (PR Author)
+                message.To.Add(new MailboxAddress(report.AuthorName.Length > 0 ? report.AuthorName : "Developer", targetRecipient));
+                Console.WriteLine($"[EmailService] Primary recipient (TO): {targetRecipient}");
+
+                // Add configurable additional recipients (Manager, Reviewer, Team Leads) directly to TO list
                 if (!string.IsNullOrWhiteSpace(additionalRecipients))
                 {
                     var extraEmails = additionalRecipients.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -39,8 +42,8 @@ namespace CodeMonitor.Services
                         var trimmed = email.Trim();
                         if (!string.IsNullOrWhiteSpace(trimmed) && trimmed.Contains("@") && !trimmed.Equals(targetRecipient, StringComparison.OrdinalIgnoreCase))
                         {
-                            message.Cc.Add(new MailboxAddress("Reviewer / Manager", trimmed));
-                            Console.WriteLine($"[EmailService] Added CC recipient: {trimmed}");
+                            message.To.Add(new MailboxAddress("Reviewer / Lead", trimmed));
+                            Console.WriteLine($"[EmailService] Additional recipient added (TO): {trimmed}");
                         }
                     }
                 }
