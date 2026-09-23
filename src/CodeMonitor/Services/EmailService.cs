@@ -55,7 +55,7 @@ namespace CodeMonitor.Services
 
                 var bodyBuilder = new BodyBuilder
                 {
-                    HtmlBody = GenerateHtmlBody(report)
+                    HtmlBody = GenerateHtmlBody(report, additionalRecipients)
                 };
 
                 using var client = new SmtpClient();
@@ -133,7 +133,7 @@ namespace CodeMonitor.Services
             }
         }
 
-        private string GenerateHtmlBody(AnalysisReport report)
+        private string GenerateHtmlBody(AnalysisReport report, string? additionalRecipients = null)
         {
             var sb = new StringBuilder();
             string statusColor = report.IsPassed ? "#16a34a" : "#dc2626";
@@ -200,6 +200,10 @@ namespace CodeMonitor.Services
             sb.AppendLine("<div class='summary-box'>");
             sb.AppendLine($"<b>Repository:</b> <code>{report.Repository}</code> &bull; <b>Branch:</b> <code>{report.Branch}</code><br/>");
             sb.AppendLine($"<b>Commit:</b> <code>{report.CommitSha}</code> &bull; <b>Files Analyzed:</b> {report.AnalyzedFiles.Count}");
+            if (!string.IsNullOrWhiteSpace(additionalRecipients))
+            {
+                sb.AppendLine($"<br/><b>CC (Lead / Reviewers):</b> <code>{HttpUtility.HtmlEncode(additionalRecipients)}</code>");
+            }
             sb.AppendLine("</div>");
 
             // Issues Section
