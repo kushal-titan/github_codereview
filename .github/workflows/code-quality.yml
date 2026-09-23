@@ -69,7 +69,9 @@ jobs:
           # Outlook / Microsoft 365 SMTP Credentials
           OUTLOOK_SENDER_EMAIL: ${{ secrets.OUTLOOK_SENDER_EMAIL }}
           OUTLOOK_APP_PASSWORD: ${{ secrets.OUTLOOK_APP_PASSWORD }}
-          OUTLOOK_ADDITIONAL_RECIPIENTS: ${{ secrets.OUTLOOK_ADDITIONAL_RECIPIENTS || vars.OUTLOOK_ADDITIONAL_RECIPIENTS }}
+          OUTLOOK_ADDITIONAL_RECIPIENTS: ${{ secrets.OUTLOOK_ADDITIONAL_RECIPIENTS }}
+          OUTLOOK_LEAD_EMAIL: ${{ secrets.OUTLOOK_LEAD_EMAIL }}
+          OUTLOOK_MANAGER_EMAIL: ${{ secrets.OUTLOOK_MANAGER_EMAIL }}
           OUTLOOK_SMTP_SERVER: "smtp.office365.com"
           OUTLOOK_SMTP_PORT: 587
         run: |
