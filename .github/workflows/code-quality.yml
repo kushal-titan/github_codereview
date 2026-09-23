@@ -73,7 +73,7 @@ jobs:
           OUTLOOK_SMTP_PORT: 587
         run: |
           echo "Analyzing changes against base: $BASE_REF for PR Author: $PR_AUTHOR_EMAIL"
-          dotnet run --project src/CodeMonitor/CodeMonitor.csproj -c Release --no-build -- \
+          dotnet run --project src/CodeMonitor/CodeMonitor.csproj -c Release -f net8.0 --no-build -- \
             --base-ref "$BASE_REF" \
             --pr-number "$PR_NUMBER" \
             --pr-url "$PR_URL" \

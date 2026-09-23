@@ -20,8 +20,8 @@ namespace CodeMonitor.Services
             }
 
             string targetRecipient = !string.IsNullOrWhiteSpace(recipientEmail) 
-                ? recipientEmail 
-                : (!string.IsNullOrWhiteSpace(report.AuthorEmail) ? report.AuthorEmail : senderEmail);
+                ? recipientEmail! 
+                : (!string.IsNullOrWhiteSpace(report.AuthorEmail) ? report.AuthorEmail : senderEmail!);
 
             try
             {
