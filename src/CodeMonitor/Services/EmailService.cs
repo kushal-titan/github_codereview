@@ -24,46 +24,34 @@ namespace CodeMonitor.Services
                 ? recipientEmail! 
                 : (!string.IsNullOrWhiteSpace(report.AuthorEmail) ? report.AuthorEmail : senderEmail!);
 
-            try
+            // Build list of distinct recipients (Author + Manager/Lead)
+            var recipientsList = new List<string> { targetRecipient };
+            if (!string.IsNullOrWhiteSpace(additionalRecipients))
             {
-                var message = new MimeMessage();
-                message.From.Add(new MailboxAddress("Code Quality Monitor Bot", senderEmail));
-
-                // Add primary recipient (PR Author)
-                message.To.Add(new MailboxAddress(report.AuthorName.Length > 0 ? report.AuthorName : "Developer", targetRecipient));
-                Console.WriteLine($"[EmailService] Primary recipient (TO): {targetRecipient}");
-
-                // Add configurable additional recipients (Manager, Reviewer, Team Leads) directly to TO list
-                if (!string.IsNullOrWhiteSpace(additionalRecipients))
+                var extraEmails = additionalRecipients.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var email in extraEmails)
                 {
-                    var extraEmails = additionalRecipients.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var email in extraEmails)
+                    var trimmed = email.Trim();
+                    if (!string.IsNullOrWhiteSpace(trimmed) && trimmed.Contains("@") && !recipientsList.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
                     {
-                        var trimmed = email.Trim();
-                        if (!string.IsNullOrWhiteSpace(trimmed) && trimmed.Contains("@") && !trimmed.Equals(targetRecipient, StringComparison.OrdinalIgnoreCase))
-                        {
-                            message.To.Add(new MailboxAddress("Reviewer / Lead", trimmed));
-                            Console.WriteLine($"[EmailService] Additional recipient added (TO): {trimmed}");
-                        }
+                        recipientsList.Add(trimmed);
                     }
                 }
+            }
 
+            Console.WriteLine($"[EmailService] Preparing delivery for {recipientsList.Count} recipient(s): {string.Join(", ", recipientsList)}");
+
+            try
+            {
                 string prInfo = !string.IsNullOrWhiteSpace(report.PullRequestNumber) ? $"PR #{report.PullRequestNumber}" : report.Branch;
-                if (report.IsPassed)
-                {
-                    message.Subject = $"✅ All Quality Checks Passed: {report.Repository} ({prInfo})";
-                }
-                else
-                {
-                    message.Subject = $"🚨 Action Required: {report.Violations.Count} Code Issue(s) in {report.Repository} ({prInfo})";
-                }
+                string emailSubject = report.IsPassed
+                    ? $"✅ All Quality Checks Passed: {report.Repository} ({prInfo})"
+                    : $"🚨 Action Required: {report.Violations.Count} Code Issue(s) in {report.Repository} ({prInfo})";
 
                 var bodyBuilder = new BodyBuilder
                 {
                     HtmlBody = GenerateHtmlBody(report)
                 };
-
-                message.Body = bodyBuilder.ToMessageBody();
 
                 using var client = new SmtpClient();
                 var secureOption = smtpPort == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
@@ -73,12 +61,29 @@ namespace CodeMonitor.Services
                 
                 Console.WriteLine($"[EmailService] Authenticating as {senderEmail}...");
                 client.Authenticate(senderEmail, appPassword);
-                
-                Console.WriteLine($"[EmailService] Dispatching email to PR author: {targetRecipient}...");
-                client.Send(message);
-                client.Disconnect(true);
 
-                Console.WriteLine($"[EmailService] ✅ Email report successfully delivered to {targetRecipient}");
+                // Dispatch individual direct message to each recipient for 100% reliable Exchange delivery
+                foreach (var recipient in recipientsList)
+                {
+                    try
+                    {
+                        var message = new MimeMessage();
+                        message.From.Add(new MailboxAddress("Code Quality Monitor Bot", senderEmail));
+                        message.To.Add(new MailboxAddress("Developer / Reviewer", recipient));
+                        message.Subject = emailSubject;
+                        message.Body = bodyBuilder.ToMessageBody();
+
+                        Console.WriteLine($"[EmailService] 📤 Dispatching direct email to: {recipient}...");
+                        client.Send(message);
+                        Console.WriteLine($"[EmailService] ✅ Successfully delivered to: {recipient}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[EmailService] ⚠️ Could not deliver to {recipient}: {ex.Message}");
+                    }
+                }
+
+                client.Disconnect(true);
                 return true;
             }
             catch (Exception ex)
