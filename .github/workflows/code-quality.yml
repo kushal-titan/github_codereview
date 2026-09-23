@@ -1,0 +1,64 @@
+name: "Automated Code Quality Monitor"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**.cs'
+      - 'src/**'
+      - 'samples/**'
+  push:
+    branches:
+      - main
+      - master
+      - develop
+    paths:
+      - '**.cs'
+
+jobs:
+  code-quality-gate:
+    name: "Roslyn AST Quality Analysis & Alerting"
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+
+    steps:
+      - name: 📥 Checkout Repository Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history required for git diff against base branch
+
+      - name: ⚙️ Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 🔨 Restore & Build Code Monitor
+        run: |
+          dotnet restore src/CodeMonitor/CodeMonitor.csproj
+          dotnet build src/CodeMonitor/CodeMonitor.csproj -c Release
+
+      - name: 🛡️ Run Quality Gate & AST Analyzer
+        env:
+          # Git context
+          BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR_EMAIL: ${{ github.event.pull_request.user.email || github.event.pusher.email }}
+          
+          # Outlook / Microsoft 365 SMTP Credentials
+          OUTLOOK_SENDER_EMAIL: ${{ secrets.OUTLOOK_SENDER_EMAIL }}
+          OUTLOOK_APP_PASSWORD: ${{ secrets.OUTLOOK_APP_PASSWORD }}
+          OUTLOOK_RECIPIENT_EMAIL: ${{ secrets.OUTLOOK_RECIPIENT_EMAIL }}
+          OUTLOOK_SMTP_SERVER: "smtp.office365.com"
+          OUTLOOK_SMTP_PORT: 587
+        run: |
+          echo "Analyzing changes against base: $BASE_REF"
+          dotnet run --project src/CodeMonitor/CodeMonitor.csproj -c Release --no-build -- \
+            --base-ref "$BASE_REF" \
+            --pr-number "$PR_NUMBER" \
+            --pr-url "$PR_URL" \
+            --pr-author "$PR_AUTHOR_EMAIL"
