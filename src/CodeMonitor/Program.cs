@@ -99,12 +99,15 @@ namespace CodeMonitor
             githubReporter.EmitWorkflowAnnotations(report, targetDir);
             githubReporter.WriteJobSummary(report, targetDir);
 
-            // 4. Dispatch Email Report via Outlook SMTP
+            // 4. Dispatch Email Report via Outlook SMTP directly to PR Author
             if (!dryRun)
             {
                 string? senderEmail = Environment.GetEnvironmentVariable("OUTLOOK_SENDER_EMAIL");
                 string? appPassword = Environment.GetEnvironmentVariable("OUTLOOK_APP_PASSWORD");
-                string? recipientEmail = Environment.GetEnvironmentVariable("OUTLOOK_RECIPIENT_EMAIL") ?? report.AuthorEmail;
+                // Priority: (1) PR Author Email -> (2) Explicit Recipient override -> (3) Sender Bot
+                string? recipientEmail = !string.IsNullOrWhiteSpace(report.AuthorEmail)
+                    ? report.AuthorEmail
+                    : Environment.GetEnvironmentVariable("OUTLOOK_RECIPIENT_EMAIL");
                 string smtpServer = Environment.GetEnvironmentVariable("OUTLOOK_SMTP_SERVER") ?? "smtp.office365.com";
                 int.TryParse(Environment.GetEnvironmentVariable("OUTLOOK_SMTP_PORT") ?? "587", out int smtpPort);
 
@@ -128,13 +131,23 @@ namespace CodeMonitor
 
         private static AnalysisReport InitializeReport(string targetDir, string? baseRef, string prNumber, string prUrl, string prAuthorEmail)
         {
+            string resolvedAuthorEmail = prAuthorEmail;
+            if (string.IsNullOrWhiteSpace(resolvedAuthorEmail))
+            {
+                resolvedAuthorEmail = GetGitAuthorEmail(targetDir);
+            }
+            if (string.IsNullOrWhiteSpace(resolvedAuthorEmail))
+            {
+                resolvedAuthorEmail = GetGitCommitterEmail(targetDir);
+            }
+
             var report = new AnalysisReport
             {
                 Repository = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") ?? Path.GetFileName(targetDir),
                 Branch = Environment.GetEnvironmentVariable("GITHUB_REF_NAME") ?? GetGitBranch(targetDir),
                 CommitSha = Environment.GetEnvironmentVariable("GITHUB_SHA") ?? GetGitCommitSha(targetDir),
                 AuthorName = Environment.GetEnvironmentVariable("GITHUB_ACTOR") ?? GetGitAuthorName(targetDir),
-                AuthorEmail = !string.IsNullOrWhiteSpace(prAuthorEmail) ? prAuthorEmail : GetGitAuthorEmail(targetDir),
+                AuthorEmail = resolvedAuthorEmail,
                 PullRequestNumber = prNumber,
                 PullRequestUrl = prUrl
             };
@@ -165,6 +178,7 @@ namespace CodeMonitor
         private static string GetGitCommitSha(string dir) => RunGitCommand(dir, "rev-parse --short HEAD") ?? "local";
         private static string GetGitAuthorName(string dir) => RunGitCommand(dir, "log -1 --format=%an") ?? Environment.UserName;
         private static string GetGitAuthorEmail(string dir) => RunGitCommand(dir, "log -1 --format=%ae") ?? "";
+        private static string GetGitCommitterEmail(string dir) => RunGitCommand(dir, "log -1 --format=%ce") ?? "";
 
         private static string? RunGitCommand(string dir, string args)
         {
