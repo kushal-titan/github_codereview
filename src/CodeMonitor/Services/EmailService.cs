@@ -67,37 +67,64 @@ namespace CodeMonitor.Services
                 Console.WriteLine($"[EmailService] Authenticating as {senderEmail}...");
                 client.Authenticate(senderEmail, appPassword);
 
-                // Dispatch individual direct message to each recipient for 100% reliable Exchange delivery
-                int successCount = 0;
-                foreach (var recipient in recipientsList)
-                {
-                    try
-                    {
-                        var message = new MimeMessage();
-                        message.From.Add(new MailboxAddress("Titan Code Quality Monitor", senderEmail));
-                        message.Sender = new MailboxAddress("Titan Code Quality Monitor", senderEmail);
-                        message.ReplyTo.Add(new MailboxAddress("Titan Code Quality Monitor", senderEmail));
-                        message.To.Add(MailboxAddress.Parse(recipient));
-                        message.Subject = emailSubject;
-                        message.Date = DateTimeOffset.UtcNow;
-                        message.Headers.Add("X-Mailer", "RoslynCodeQualityMonitor/1.0");
-                        message.Headers.Add("X-Priority", report.IsPassed ? "3" : "1");
-                        message.Body = bodyBuilder.ToMessageBody();
+                // 1. Build a broadcast message with all recipients (To: Author, Cc: Lead/Manager)
+                var message = new MimeMessage();
+                
+                // Use standard parsed address so Microsoft Defender matches Azure AD identity
+                var senderAddress = MailboxAddress.Parse(senderEmail);
+                message.From.Add(senderAddress);
+                message.Sender = senderAddress;
+                message.ReplyTo.Add(senderAddress);
 
-                        Console.WriteLine($"[EmailService] 📤 Dispatching direct email to: {recipient}...");
-                        client.Send(message);
-                        Console.WriteLine($"[EmailService] ✅ Successfully delivered to: {recipient}");
-                        successCount++;
-                    }
-                    catch (Exception ex)
+                // Primary recipient (PR Author)
+                message.To.Add(MailboxAddress.Parse(targetRecipient));
+
+                // Additional recipients (Lead, Manager, Team)
+                if (recipientsList.Count > 1)
+                {
+                    for (int i = 1; i < recipientsList.Count; i++)
                     {
-                        Console.WriteLine($"[EmailService] ⚠️ Delivery failed for {recipient}: {ex.Message}");
+                        message.Cc.Add(MailboxAddress.Parse(recipientsList[i]));
+                    }
+                }
+
+                message.Subject = emailSubject;
+                message.Date = DateTimeOffset.UtcNow;
+                message.Body = bodyBuilder.ToMessageBody();
+
+                Console.WriteLine($"[EmailService] 📤 Dispatching email to: {string.Join(", ", recipientsList)}...");
+                client.Send(message);
+                Console.WriteLine($"[EmailService] ✅ Successfully delivered email to all recipients via Office 365!");
+
+                // Also dispatch a direct individual 1-to-1 copy to each additional recipient to guarantee inbox delivery
+                if (recipientsList.Count > 1)
+                {
+                    for (int i = 1; i < recipientsList.Count; i++)
+                    {
+                        try
+                        {
+                            var directMsg = new MimeMessage();
+                            directMsg.From.Add(senderAddress);
+                            directMsg.Sender = senderAddress;
+                            directMsg.ReplyTo.Add(senderAddress);
+                            directMsg.To.Add(MailboxAddress.Parse(recipientsList[i]));
+                            directMsg.Subject = emailSubject;
+                            directMsg.Date = DateTimeOffset.UtcNow;
+                            directMsg.Body = bodyBuilder.ToMessageBody();
+
+                            Console.WriteLine($"[EmailService] 📤 Dispatching dedicated direct copy to: {recipientsList[i]}...");
+                            client.Send(directMsg);
+                            Console.WriteLine($"[EmailService] ✅ Direct copy successfully delivered to: {recipientsList[i]}");
+                        }
+                        catch (Exception exDirect)
+                        {
+                            Console.WriteLine($"[EmailService] ⚠️ Direct copy note for {recipientsList[i]}: {exDirect.Message}");
+                        }
                     }
                 }
 
                 client.Disconnect(true);
-                Console.WriteLine($"[EmailService] 🏁 Finished email dispatch: {successCount}/{recipientsList.Count} delivered successfully.");
-                return successCount > 0;
+                return true;
             }
             catch (Exception ex)
             {
