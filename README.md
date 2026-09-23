@@ -54,11 +54,12 @@ flowchart TD
 
 Navigate to your repository on GitHub: **Settings > Secrets and variables > Actions > New repository secret**.
 
-| Secret Name | Example Value | Description |
+| Secret / Variable Name | Example Value | Description |
 | :--- | :--- | :--- |
 | `OUTLOOK_SENDER_EMAIL` | `bot@yourcompany.com` | Dedicated Outlook or Microsoft 365 sender address. |
 | `OUTLOOK_APP_PASSWORD` | `xxxx xxxx xxxx xxxx` | 16-character Microsoft App Password. |
-| `OUTLOOK_RECIPIENT_EMAIL` | *(Optional)* `team@yourcompany.com` | Team mailbox (defaults to PR author). |
+| `OUTLOOK_ADDITIONAL_RECIPIENTS` | `manager@company.com, lead@company.com` | *(Optional)* Comma-separated list of Manager, Reviewer, or Team Lead emails to CC on every PR alert. |
+| `OUTLOOK_RECIPIENT_EMAIL` | *(Optional)* `team@yourcompany.com` | Override primary recipient (defaults dynamically to the PR Author). |
 
 ### 2. Enable Branch Protection (Block Merge on Failure)
 
