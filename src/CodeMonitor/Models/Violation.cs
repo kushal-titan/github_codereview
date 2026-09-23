@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace CodeMonitor.Models
 {
@@ -23,5 +24,7 @@ namespace CodeMonitor.Models
         public string Description { get; set; } = string.Empty;
         public string Rationale { get; set; } = string.Empty;
         public string RecommendedFix { get; set; } = string.Empty;
+        public List<string> ActionSteps { get; set; } = new List<string>();
+        public string CodeExample { get; set; } = string.Empty;
     }
 }

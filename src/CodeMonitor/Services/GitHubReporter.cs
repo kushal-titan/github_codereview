@@ -13,101 +13,129 @@ namespace CodeMonitor.Services
             {
                 string relativePath = GetRelativePath(violation.TargetFile, workingDirectory);
                 string command = violation.Severity == ViolationSeverity.Error ? "error" : "warning";
-                string title = $"{violation.RuleId}: {violation.RuleName}";
-                string message = $"{violation.Description} -> Recommendation: {violation.RecommendedFix}";
+                string title = $"{violation.RuleId}: {violation.RuleName} ({violation.MemberName})";
+                string message = $"{violation.Description} -> How to fix: {violation.RecommendedFix}";
 
-                // GitHub workflow command syntax:
-                // ::error file={name},line={line},endLine={endLine},title={title}::{message}
                 Console.WriteLine($"::{command} file={relativePath},line={violation.LineNumber},endLine={violation.EndLineNumber},title={title}::{EscapeProperty(message)}");
             }
 
             if (report.IsPassed)
             {
-                Console.WriteLine("::notice title=Code Quality Monitor::All analyzed files passed quality gates with zero errors.");
+                Console.WriteLine("::notice title=Code Quality Monitor::✅ All modified C# files passed quality checks with zero errors.");
             }
         }
 
         public void WriteJobSummary(AnalysisReport report, string workingDirectory)
         {
+            string markdown = BuildMarkdownReport(report, workingDirectory, isPrComment: false);
+
             string? summaryPath = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
-            if (string.IsNullOrWhiteSpace(summaryPath))
+            if (!string.IsNullOrWhiteSpace(summaryPath))
             {
-                return;
-            }
-
-            var sb = new StringBuilder();
-            sb.AppendLine("# 🛡️ Automated Code Quality Report");
-            sb.AppendLine();
-
-            if (report.IsPassed)
-            {
-                sb.AppendLine("### ✅ **Status: Quality Gate Passed**");
-                sb.AppendLine("All modified C# files comply with code quality thresholds.");
-            }
-            else
-            {
-                sb.AppendLine("### ❌ **Status: Quality Gate Failed**");
-                sb.AppendLine($"Found **{report.ErrorCount}** error(s) and **{report.WarningCount}** warning(s).");
-                sb.AppendLine("> [!IMPORTANT]");
-                sb.AppendLine("> Code quality violations must be addressed before merging this pull request.");
-            }
-
-            sb.AppendLine();
-            sb.AppendLine("#### 📊 Execution Metadata");
-            sb.AppendLine($"- **Repository:** `{report.Repository}`");
-            sb.AppendLine($"- **Branch / PR:** `{report.Branch}`");
-            sb.AppendLine($"- **Commit SHA:** `{report.CommitSha}`");
-            sb.AppendLine($"- **Author:** {report.AuthorName} ({report.AuthorEmail})");
-            sb.AppendLine($"- **Analyzed Files:** `{report.AnalyzedFiles.Count}` file(s)");
-            sb.AppendLine();
-
-            if (report.Violations.Count > 0)
-            {
-                sb.AppendLine("#### 🔍 Detected Violations & Action Items");
-                sb.AppendLine();
-                sb.AppendLine("| Severity | Rule | Location | Target | Metric | Recommendation |");
-                sb.AppendLine("| :---: | :--- | :--- | :--- | :---: | :--- |");
-
-                foreach (var v in report.Violations)
+                try
                 {
-                    string badge = v.Severity == ViolationSeverity.Error ? "❌ **Error**" : "⚠️ **Warning**";
-                    string relPath = GetRelativePath(v.TargetFile, workingDirectory);
-                    string location = $"`{relPath}:{v.LineNumber}`";
-                    string metric = $"{v.ActualValue} (Limit: {v.ThresholdValue})";
-
-                    sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}()` | {metric} | {v.RecommendedFix} |");
+                    File.AppendAllText(summaryPath, markdown);
+                    Console.WriteLine($"[GitHubReporter] Step summary written to {summaryPath}");
                 }
-
-                sb.AppendLine();
-                sb.AppendLine("#### 💡 Detailed Reasoning & Guidance");
-                foreach (var v in report.Violations)
+                catch (Exception ex)
                 {
-                    string relPath = GetRelativePath(v.TargetFile, workingDirectory);
-                    sb.AppendLine($"<details><summary><b>[{v.RuleId}] {v.RuleName} in {relPath} (Line {v.LineNumber})</b></summary>");
-                    sb.AppendLine();
-                    sb.AppendLine($"**Description:** {v.Description}");
-                    sb.AppendLine();
-                    sb.AppendLine($"**Why this matters:** {v.Rationale}");
-                    sb.AppendLine();
-                    sb.AppendLine($"**How to fix:** {v.RecommendedFix}");
-                    sb.AppendLine();
-                    sb.AppendLine("</details>");
+                    Console.WriteLine($"[GitHubReporter] Warning: Could not write step summary: {ex.Message}");
                 }
             }
-            else
-            {
-                sb.AppendLine("🎉 No code quality violations detected! Great job writing clean, maintainable code.");
-            }
 
+            // Also write pr-comment.md so GitHub Actions can post it as a comment on the PR
             try
             {
-                File.AppendAllText(summaryPath, sb.ToString());
-                Console.WriteLine($"[GitHubReporter] Step summary successfully appended to {summaryPath}");
+                string prCommentPath = Path.Combine(workingDirectory, "pr-comment.md");
+                string prCommentMarkdown = BuildMarkdownReport(report, workingDirectory, isPrComment: true);
+                File.WriteAllText(prCommentPath, prCommentMarkdown);
+                Console.WriteLine($"[GitHubReporter] PR comment written to {prCommentPath}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[GitHubReporter] Warning: Could not write step summary: {ex.Message}");
+                Console.WriteLine($"[GitHubReporter] Note: Could not write pr-comment.md: {ex.Message}");
             }
+        }
+
+        private string BuildMarkdownReport(AnalysisReport report, string workingDirectory, bool isPrComment)
+        {
+            var sb = new StringBuilder();
+
+            if (report.IsPassed)
+            {
+                sb.AppendLine("## ✅ Code Quality Gate: **PASSED**");
+                sb.AppendLine();
+                sb.AppendLine($"Great work @{report.AuthorName}! All modified C# files meet the repository's code quality standards.");
+                sb.AppendLine();
+                sb.AppendLine("- **Status:** Ready for human review and merge");
+                sb.AppendLine($"- **Files Analyzed:** `{report.AnalyzedFiles.Count}` file(s)");
+                sb.AppendLine($"- **Commit:** `{report.CommitSha}`");
+                return sb.ToString();
+            }
+
+            sb.AppendLine("## 🚨 Code Quality Check: **ACTION REQUIRED**");
+            sb.AppendLine();
+            sb.AppendLine($"> [!WARNING]");
+            sb.AppendLine($"> Found **{report.ErrorCount} error(s)** and **{report.WarningCount} warning(s)** in your changes. Please review the locations and recommended fixes below before merging.");
+            sb.AppendLine();
+
+            sb.AppendLine("### 📋 Quick Summary Table");
+            sb.AppendLine();
+            sb.AppendLine("| Severity | Rule | Location | Target | Actual vs Limit | Quick Fix |");
+            sb.AppendLine("| :---: | :--- | :--- | :--- | :---: | :--- |");
+
+            foreach (var v in report.Violations)
+            {
+                string badge = v.Severity == ViolationSeverity.Error ? "❌ **Error**" : "⚠️ **Warning**";
+                string relPath = GetRelativePath(v.TargetFile, workingDirectory);
+                string location = $"`{relPath}:{v.LineNumber}`";
+                string metric = $"**{v.ActualValue}** (Max: {v.ThresholdValue})";
+
+                sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}()` | {metric} | {v.RecommendedFix} |");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("---");
+            sb.AppendLine("### 🔍 Step-by-Step Breakdown & Refactoring Examples");
+            sb.AppendLine();
+
+            int index = 1;
+            foreach (var v in report.Violations)
+            {
+                string relPath = GetRelativePath(v.TargetFile, workingDirectory);
+                string badge = v.Severity == ViolationSeverity.Error ? "❌ ERROR" : "⚠️ WARNING";
+
+                sb.AppendLine($"#### {index++}. [{badge}] `{v.RuleId}: {v.RuleName}` in `{v.MemberName}()`");
+                sb.AppendLine();
+                sb.AppendLine($"- **📍 WHERE:** File [`{relPath}`](file:///{v.TargetFile}) at **Line {v.LineNumber} to {v.EndLineNumber}**");
+                sb.AppendLine($"- **⚠️ WHAT:** {v.Description}");
+                sb.AppendLine($"- **💡 WHY:** {v.Rationale}");
+                sb.AppendLine();
+                sb.AppendLine("**🛠️ WHAT TO DO:**");
+                foreach (var step in v.ActionSteps)
+                {
+                    sb.AppendLine($"  1. {step}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(v.CodeExample))
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("<details><summary><b>👉 Click to view Refactoring Example (Before / After)</b></summary>");
+                    sb.AppendLine();
+                    sb.AppendLine("```csharp");
+                    sb.AppendLine(v.CodeExample);
+                    sb.AppendLine("```");
+                    sb.AppendLine();
+                    sb.AppendLine("</details>");
+                }
+
+                sb.AppendLine();
+            }
+
+            sb.AppendLine("---");
+            sb.AppendLine("*🤖 Generated automatically by Roslyn Code Quality Monitor in GitHub Actions.*");
+
+            return sb.ToString();
         }
 
         private static string GetRelativePath(string fullPath, string basePath)

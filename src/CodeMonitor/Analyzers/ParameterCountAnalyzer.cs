@@ -41,7 +41,7 @@ namespace CodeMonitor.Analyzers
                         ? m.Identifier.Text
                         : (method is ConstructorDeclarationSyntax c ? c.Identifier.Text : "AnonymousMethod");
 
-                    var (rationale, recommendation) = RecommendationEngine.GetParameterCountAdvice(methodName, paramCount, config.MaxParameterCount);
+                    var (rationale, recommendation, steps, example) = RecommendationEngine.GetParameterCountAdvice(methodName, paramCount, config.MaxParameterCount);
 
                     yield return new Violation
                     {
@@ -56,7 +56,9 @@ namespace CodeMonitor.Analyzers
                         Severity = paramCount > (config.MaxParameterCount + 2) ? ViolationSeverity.Error : ViolationSeverity.Warning,
                         Description = $"Method '{methodName}' accepts {paramCount} parameters (maximum allowed: {config.MaxParameterCount}).",
                         Rationale = rationale,
-                        RecommendedFix = recommendation
+                        RecommendedFix = recommendation,
+                        ActionSteps = steps,
+                        CodeExample = example
                     };
                 }
             }

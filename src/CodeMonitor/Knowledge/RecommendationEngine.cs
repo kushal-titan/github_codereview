@@ -1,33 +1,124 @@
+using System.Collections.Generic;
+
 namespace CodeMonitor.Knowledge
 {
     public static class RecommendationEngine
     {
-        public static (string Rationale, string Recommendation) GetMethodLengthAdvice(string methodName, int actualLines, int limit)
+        public static (string Rationale, string Recommendation, List<string> ActionSteps, string CodeExample) GetMethodLengthAdvice(string methodName, int actualLines, int limit)
         {
-            var rationale = $"Method '{methodName}' spans {actualLines} lines (limit: {limit}). Long methods violate the Single Responsibility Principle (SRP), accumulate high cognitive load, and make unit testing and maintenance significantly harder.";
-            var recommendation = "Apply the 'Extract Method' refactoring technique. Break down the method into smaller, cohesive private helper functions that each perform one well-defined task with descriptive naming.";
-            return (rationale, recommendation);
+            var rationale = $"Method '{methodName}' is {actualLines} lines long (allowed limit is {limit} lines). Methods of this size usually perform multiple tasks, making them error-prone, hard to read, and difficult to write unit tests for.";
+            var recommendation = "Break down this long function into smaller, private helper methods using the 'Extract Method' pattern.";
+            
+            var steps = new List<string>
+            {
+                $"Identify distinct phases inside '{methodName}' (e.g. Validation, Calculation, Persistence, Formatting).",
+                "Highlight each phase and extract it into a separate private method with a clear name (e.g., CalculateDiscount(), ApplyTaxes()).",
+                $"Ensure '{methodName}' acts as a high-level orchestrator under {limit} lines."
+            };
+
+            var example = 
+@"// ❌ BEFORE (One 80+ line method doing everything):
+public decimal ProcessOrder(Order o) {
+    // 30 lines of discount calculation
+    // 25 lines of tax calculation
+    // 25 lines of shipping logic
+}
+
+// ✅ AFTER (Orchestrator calling cohesive helper methods):
+public decimal ProcessOrder(Order o) {
+    var discount = CalculateDiscount(o);
+    var tax = CalculateTax(o, discount);
+    var shipping = CalculateShipping(o);
+    return (o.Total - discount) + tax + shipping;
+}";
+
+            return (rationale, recommendation, steps, example);
         }
 
-        public static (string Rationale, string Recommendation) GetComplexityAdvice(string methodName, int complexity, int limit)
+        public static (string Rationale, string Recommendation, List<string> ActionSteps, string CodeExample) GetComplexityAdvice(string methodName, int complexity, int limit)
         {
-            var rationale = $"Method '{methodName}' has a Cyclomatic Complexity of {complexity} (limit: {limit}). High complexity indicates excessive branching paths, which dramatically increases bug probability and makes complete branch testing impractical.";
-            var recommendation = "Simplify control flow: (1) Replace nested conditionals with guard clauses and early returns. (2) Replace complex switch/if-else ladders with Strategy or Polymorphic patterns. (3) Extract validation and sub-rules into specialized helper classes.";
-            return (rationale, recommendation);
+            var rationale = $"Method '{methodName}' has {complexity} independent execution branches (allowed limit is {limit}). Code with high cyclomatic complexity requires dozens of unit tests to cover every edge case and frequently conceals hidden production bugs.";
+            var recommendation = "Simplify control flow by using Guard Clauses (early returns), dictionary mappings, or the Strategy pattern.";
+
+            var steps = new List<string>
+            {
+                "Invert nested if-conditions to return early (Guard Clauses / Fail-Fast).",
+                "Replace long 'if-else-if' ladders or switch blocks with Dictionary lookups or polymorphic strategy classes.",
+                "Extract inner conditional blocks into separate helper methods."
+            };
+
+            var example = 
+@"// ❌ BEFORE (Complex nested branching, Complexity > 15):
+if (user != null) {
+    if (user.IsActive) {
+        if (user.Tier == ""VIP"") {
+            // ...
+        }
+    }
+}
+
+// ✅ AFTER (Early returns with Guard Clauses, Complexity < 5):
+if (user == null || !user.IsActive) return 0;
+if (user.Tier == ""VIP"") return GetVipRate();
+return GetStandardRate();";
+
+            return (rationale, recommendation, steps, example);
         }
 
-        public static (string Rationale, string Recommendation) GetParameterCountAdvice(string methodName, int count, int limit)
+        public static (string Rationale, string Recommendation, List<string> ActionSteps, string CodeExample) GetParameterCountAdvice(string methodName, int count, int limit)
         {
-            var rationale = $"Method '{methodName}' accepts {count} parameters (limit: {limit}). Long parameter lists create fragile signatures, reduce readability, and indicate that the method may be doing too much.";
-            var recommendation = "Introduce a Parameter Object (DTO or Command record) to bundle related parameters together, or leverage Builder / Options patterns.";
-            return (rationale, recommendation);
+            var rationale = $"Method '{methodName}' takes {count} parameters (allowed limit is {limit}). Long parameter lists make method calls hard to read, prone to argument-order bugs, and indicate the method is doing too much.";
+            var recommendation = "Group related parameters into a single Parameter Object (DTO or C# record).";
+
+            var steps = new List<string>
+            {
+                "Create a dedicated class or record for the parameters (e.g., `OrderCalculationRequest`).",
+                $"Update '{methodName}' to accept this single parameter object.",
+                "Pass properties through the object instead of individual method arguments."
+            };
+
+            var example = 
+@"// ❌ BEFORE (6 parameters):
+public void Calculate(User u, decimal cart, string promo, string region, bool holiday, bool gift)
+
+// ✅ AFTER (Single Parameter DTO / Record):
+public record DiscountRequest(User Customer, decimal CartTotal, string PromoCode, string Region, bool IsHoliday);
+public void Calculate(DiscountRequest request)";
+
+            return (rationale, recommendation, steps, example);
         }
 
-        public static (string Rationale, string Recommendation) GetNestingDepthAdvice(string methodName, int depth, int limit)
+        public static (string Rationale, string Recommendation, List<string> ActionSteps, string CodeExample) GetNestingDepthAdvice(string methodName, int depth, int limit)
         {
-            var rationale = $"Method '{methodName}' has a control flow nesting depth of {depth} levels (limit: {limit}). Deep nesting ('arrow anti-pattern') makes code flow hard to trace and obscures core business logic.";
-            var recommendation = "Invert conditional logic using Guard Clauses ('fail fast') to return early, or extract innermost loops/conditions into private methods.";
-            return (rationale, recommendation);
+            var rationale = $"Method '{methodName}' has code nested {depth} levels deep (allowed limit is {limit} levels). This 'arrow anti-pattern' makes it extremely hard to trace the execution path and understand business logic.";
+            var recommendation = "Flatten the logic by returning early (Guard Clauses) and extracting deeply nested loops into private methods.";
+
+            var steps = new List<string>
+            {
+                "Inspect the outermost `if` conditions. If a condition fails, return or continue immediately.",
+                "Avoid wrapping entire method bodies inside huge `if (isValid)` blocks.",
+                "Extract innermost loop bodies into isolated helper functions."
+            };
+
+            var example = 
+@"// ❌ BEFORE (4 levels of nesting):
+if (order != null) {
+    if (order.Items != null) {
+        foreach (var item in order.Items) {
+            if (item.Price > 0) {
+                // deep logic
+            }
+        }
+    }
+}
+
+// ✅ AFTER (Flattened with early exits):
+if (order?.Items == null) return;
+foreach (var item in order.Items.Where(i => i.Price > 0)) {
+    ProcessItem(item);
+}";
+
+            return (rationale, recommendation, steps, example);
         }
     }
 }
