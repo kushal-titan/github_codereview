@@ -40,7 +40,7 @@ namespace CodeMonitor.Analyzers
                         ? m.Identifier.Text
                         : (method is ConstructorDeclarationSyntax c ? c.Identifier.Text : "AnonymousMethod");
 
-                    var (rationale, recommendation) = RecommendationEngine.GetMethodLengthAdvice(methodName, lineCount, config.MaxMethodLines);
+                    var (rationale, recommendation, steps, example) = RecommendationEngine.GetMethodLengthAdvice(methodName, lineCount, config.MaxMethodLines);
 
                     yield return new Violation
                     {
@@ -55,7 +55,9 @@ namespace CodeMonitor.Analyzers
                         Severity = lineCount > (config.MaxMethodLines * 1.5) ? ViolationSeverity.Error : ViolationSeverity.Warning,
                         Description = $"Method '{methodName}' is {lineCount} lines long (maximum allowed: {config.MaxMethodLines}).",
                         Rationale = rationale,
-                        RecommendedFix = recommendation
+                        RecommendedFix = recommendation,
+                        ActionSteps = steps,
+                        CodeExample = example
                     };
                 }
             }

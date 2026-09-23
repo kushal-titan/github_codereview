@@ -42,7 +42,7 @@ namespace CodeMonitor.Analyzers
                         ? m.Identifier.Text
                         : (method is ConstructorDeclarationSyntax c ? c.Identifier.Text : "AnonymousMethod");
 
-                    var (rationale, recommendation) = RecommendationEngine.GetNestingDepthAdvice(methodName, maxDepth, config.MaxNestingDepth);
+                    var (rationale, recommendation, steps, example) = RecommendationEngine.GetNestingDepthAdvice(methodName, maxDepth, config.MaxNestingDepth);
 
                     yield return new Violation
                     {
@@ -57,7 +57,9 @@ namespace CodeMonitor.Analyzers
                         Severity = maxDepth > (config.MaxNestingDepth + 1) ? ViolationSeverity.Error : ViolationSeverity.Warning,
                         Description = $"Method '{methodName}' has a maximum nesting depth of {maxDepth} (maximum allowed: {config.MaxNestingDepth}).",
                         Rationale = rationale,
-                        RecommendedFix = recommendation
+                        RecommendedFix = recommendation,
+                        ActionSteps = steps,
+                        CodeExample = example
                     };
                 }
             }

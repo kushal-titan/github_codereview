@@ -42,7 +42,7 @@ namespace CodeMonitor.Analyzers
                         ? m.Identifier.Text
                         : (method is ConstructorDeclarationSyntax c ? c.Identifier.Text : "AnonymousMethod");
 
-                    var (rationale, recommendation) = RecommendationEngine.GetComplexityAdvice(methodName, complexity, config.MaxCyclomaticComplexity);
+                    var (rationale, recommendation, steps, example) = RecommendationEngine.GetComplexityAdvice(methodName, complexity, config.MaxCyclomaticComplexity);
 
                     yield return new Violation
                     {
@@ -57,7 +57,9 @@ namespace CodeMonitor.Analyzers
                         Severity = complexity > (config.MaxCyclomaticComplexity * 1.5) ? ViolationSeverity.Error : ViolationSeverity.Warning,
                         Description = $"Method '{methodName}' has a cyclomatic complexity of {complexity} (maximum allowed: {config.MaxCyclomaticComplexity}).",
                         Rationale = rationale,
-                        RecommendedFix = recommendation
+                        RecommendedFix = recommendation,
+                        ActionSteps = steps,
+                        CodeExample = example
                     };
                 }
             }
