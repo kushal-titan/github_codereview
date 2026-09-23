@@ -25,7 +25,12 @@ namespace CodeMonitor.Services
                 : (!string.IsNullOrWhiteSpace(report.AuthorEmail) ? report.AuthorEmail : senderEmail!);
 
             // Build list of distinct recipients (Author + Manager/Lead)
-            var recipientsList = new List<string> { targetRecipient };
+            var recipientsList = new List<string>();
+            if (!string.IsNullOrWhiteSpace(targetRecipient) && targetRecipient.Contains("@"))
+            {
+                recipientsList.Add(targetRecipient.Trim());
+            }
+
             if (!string.IsNullOrWhiteSpace(additionalRecipients))
             {
                 var extraEmails = additionalRecipients.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
@@ -39,7 +44,7 @@ namespace CodeMonitor.Services
                 }
             }
 
-            Console.WriteLine($"[EmailService] Preparing delivery for {recipientsList.Count} recipient(s): {string.Join(", ", recipientsList)}");
+            Console.WriteLine($"[EmailService] 📬 Total Distinct Recipients ({recipientsList.Count}): {string.Join(", ", recipientsList)}");
 
             try
             {
@@ -63,28 +68,36 @@ namespace CodeMonitor.Services
                 client.Authenticate(senderEmail, appPassword);
 
                 // Dispatch individual direct message to each recipient for 100% reliable Exchange delivery
+                int successCount = 0;
                 foreach (var recipient in recipientsList)
                 {
                     try
                     {
                         var message = new MimeMessage();
-                        message.From.Add(new MailboxAddress("Code Quality Monitor Bot", senderEmail));
-                        message.To.Add(new MailboxAddress("Developer / Reviewer", recipient));
+                        message.From.Add(new MailboxAddress("Titan Code Quality Monitor", senderEmail));
+                        message.Sender = new MailboxAddress("Titan Code Quality Monitor", senderEmail);
+                        message.ReplyTo.Add(new MailboxAddress("Titan Code Quality Monitor", senderEmail));
+                        message.To.Add(MailboxAddress.Parse(recipient));
                         message.Subject = emailSubject;
+                        message.Date = DateTimeOffset.UtcNow;
+                        message.Headers.Add("X-Mailer", "RoslynCodeQualityMonitor/1.0");
+                        message.Headers.Add("X-Priority", report.IsPassed ? "3" : "1");
                         message.Body = bodyBuilder.ToMessageBody();
 
                         Console.WriteLine($"[EmailService] 📤 Dispatching direct email to: {recipient}...");
                         client.Send(message);
                         Console.WriteLine($"[EmailService] ✅ Successfully delivered to: {recipient}");
+                        successCount++;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[EmailService] ⚠️ Could not deliver to {recipient}: {ex.Message}");
+                        Console.WriteLine($"[EmailService] ⚠️ Delivery failed for {recipient}: {ex.Message}");
                     }
                 }
 
                 client.Disconnect(true);
-                return true;
+                Console.WriteLine($"[EmailService] 🏁 Finished email dispatch: {successCount}/{recipientsList.Count} delivered successfully.");
+                return successCount > 0;
             }
             catch (Exception ex)
             {
