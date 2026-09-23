@@ -20,31 +20,75 @@ namespace CodeMonitor.Models
         {
             try
             {
-                string[] possibleConfigPaths = new[]
+                var candidateDirs = new List<string>();
+                
+                if (!string.IsNullOrWhiteSpace(targetDir)) candidateDirs.Add(targetDir);
+                
+                string currentDir = Directory.GetCurrentDirectory();
+                if (!candidateDirs.Contains(currentDir, StringComparer.OrdinalIgnoreCase)) candidateDirs.Add(currentDir);
+                
+                string? ghWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+                if (!string.IsNullOrWhiteSpace(ghWorkspace) && !candidateDirs.Contains(ghWorkspace, StringComparer.OrdinalIgnoreCase))
                 {
-                    Path.Combine(targetDir, "code-quality.config.json"),
-                    Path.Combine(targetDir, "codemonitor.json"),
-                    Path.Combine(targetDir, ".codemonitor.json")
-                };
+                    candidateDirs.Add(ghWorkspace);
+                }
 
-                foreach (var path in possibleConfigPaths)
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                if (!string.IsNullOrWhiteSpace(baseDir) && !candidateDirs.Contains(baseDir, StringComparer.OrdinalIgnoreCase))
                 {
-                    if (File.Exists(path))
+                    candidateDirs.Add(baseDir);
+                }
+
+                // Add parent directories up to 4 levels
+                int initialCount = candidateDirs.Count;
+                for (int i = 0; i < initialCount; i++)
+                {
+                    var dir = new DirectoryInfo(candidateDirs[i]);
+                    for (int depth = 0; depth < 4 && dir?.Parent != null; depth++)
                     {
-                        string json = File.ReadAllText(path);
-                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                        var loaded = JsonSerializer.Deserialize<QualityConfig>(json, options);
-                        if (loaded != null)
+                        dir = dir.Parent;
+                        if (!candidateDirs.Contains(dir.FullName, StringComparer.OrdinalIgnoreCase))
                         {
-                            Console.WriteLine($"[Config] Loaded custom quality settings and recipients from {Path.GetFileName(path)}");
-                            return loaded;
+                            candidateDirs.Add(dir.FullName);
                         }
                     }
                 }
+
+                string[] configNames = new[] { "code-quality.config.json", "codemonitor.json", ".codemonitor.json" };
+
+                foreach (var dir in candidateDirs)
+                {
+                    foreach (var name in configNames)
+                    {
+                        string candidatePath = Path.Combine(dir, name);
+                        if (File.Exists(candidatePath))
+                        {
+                            string json = File.ReadAllText(candidatePath);
+                            var options = new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true,
+                                AllowTrailingCommas = true,
+                                ReadCommentHandling = JsonCommentHandling.Skip
+                            };
+                            var loaded = JsonSerializer.Deserialize<QualityConfig>(json, options);
+                            if (loaded != null)
+                            {
+                                Console.WriteLine($"[Config] ✅ Successfully loaded custom quality settings from: {candidatePath}");
+                                if (loaded.AdditionalRecipients != null && loaded.AdditionalRecipients.Count > 0)
+                                {
+                                    Console.WriteLine($"[Config] 👥 Configured Additional Recipients: {string.Join(", ", loaded.AdditionalRecipients)}");
+                                }
+                                return loaded;
+                            }
+                        }
+                    }
+                }
+
+                Console.WriteLine("[Config] ℹ️ No custom code-quality.config.json found in candidate paths. Using default configuration.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Config] Note: Using default config ({ex.Message})");
+                Console.WriteLine($"[Config] ⚠️ Error loading config: {ex.Message}. Using default settings.");
             }
 
             return new QualityConfig();

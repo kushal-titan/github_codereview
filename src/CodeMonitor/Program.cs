@@ -126,11 +126,14 @@ namespace CodeMonitor
                     }
                 }
 
-                CollectEmails(GetArgValue(args, "--additional-recipients", "--cc"));
+                CollectEmails(GetArgValue(args, "--additional-recipients", "--cc", "--lead", "--manager", "--lead-email", "--manager-email"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_ADDITIONAL_RECIPIENTS"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_LEAD_EMAIL"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_MANAGER_EMAIL"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_CC_EMAILS"));
+                CollectEmails(Environment.GetEnvironmentVariable("LEAD_EMAIL"));
+                CollectEmails(Environment.GetEnvironmentVariable("MANAGER_EMAIL"));
+
                 if (config.AdditionalRecipients != null)
                 {
                     foreach (var extra in config.AdditionalRecipients)
@@ -142,6 +145,9 @@ namespace CodeMonitor
                 string? additionalRecipients = additionalList.Count > 0 ? string.Join(", ", additionalList) : null;
                 string smtpServer = Environment.GetEnvironmentVariable("OUTLOOK_SMTP_SERVER") ?? "smtp.office365.com";
                 int.TryParse(Environment.GetEnvironmentVariable("OUTLOOK_SMTP_PORT") ?? "587", out int smtpPort);
+
+                Console.WriteLine($"[Email Dispatch] Primary Recipient: {recipientEmail ?? "None"}");
+                Console.WriteLine($"[Email Dispatch] Lead / Manager Recipients: {additionalRecipients ?? "None"}");
 
                 emailService.SendReport(report, senderEmail, appPassword, recipientEmail, additionalRecipients, smtpServer, smtpPort);
             }
