@@ -26,7 +26,7 @@ namespace CodeMonitor
             string prAuthorEmail = GetArgValue(args, "--pr-author") ?? Environment.GetEnvironmentVariable("PR_AUTHOR_EMAIL") ?? "";
             bool dryRun = args.Contains("--dry-run") || bool.TryParse(Environment.GetEnvironmentVariable("DRY_RUN"), out var dr) && dr;
 
-            var config = new QualityConfig();
+            var config = QualityConfig.Load(targetDir);
             var gitDiffService = new GitDiffService();
             var githubReporter = new GitHubReporter();
             var emailService = new EmailService();
@@ -108,12 +108,46 @@ namespace CodeMonitor
                 string? recipientEmail = !string.IsNullOrWhiteSpace(report.AuthorEmail)
                     ? report.AuthorEmail
                     : Environment.GetEnvironmentVariable("OUTLOOK_RECIPIENT_EMAIL");
-                string? additionalRecipients = GetArgValue(args, "--additional-recipients", "--cc")
-                    ?? Environment.GetEnvironmentVariable("OUTLOOK_ADDITIONAL_RECIPIENTS")
-                    ?? Environment.GetEnvironmentVariable("OUTLOOK_MANAGER_EMAIL")
-                    ?? Environment.GetEnvironmentVariable("OUTLOOK_CC_EMAILS");
+                // Collect all configured additional recipients (Lead, Manager, Team)
+                var additionalList = new List<string>();
+                void CollectEmails(string? raw)
+                {
+                    if (!string.IsNullOrWhiteSpace(raw))
+                    {
+                        var tokens = raw.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var token in tokens)
+                        {
+                            var clean = token.Trim();
+                            if (clean.Contains("@") && !additionalList.Contains(clean, StringComparer.OrdinalIgnoreCase))
+                            {
+                                additionalList.Add(clean);
+                            }
+                        }
+                    }
+                }
+
+                CollectEmails(GetArgValue(args, "--additional-recipients", "--cc", "--lead", "--manager", "--lead-email", "--manager-email"));
+                CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_ADDITIONAL_RECIPIENTS"));
+                CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_LEAD_EMAIL"));
+                CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_MANAGER_EMAIL"));
+                CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_CC_EMAILS"));
+                CollectEmails(Environment.GetEnvironmentVariable("LEAD_EMAIL"));
+                CollectEmails(Environment.GetEnvironmentVariable("MANAGER_EMAIL"));
+
+                if (config.AdditionalRecipients != null)
+                {
+                    foreach (var extra in config.AdditionalRecipients)
+                    {
+                        CollectEmails(extra);
+                    }
+                }
+
+                string? additionalRecipients = additionalList.Count > 0 ? string.Join(", ", additionalList) : null;
                 string smtpServer = Environment.GetEnvironmentVariable("OUTLOOK_SMTP_SERVER") ?? "smtp.office365.com";
                 int.TryParse(Environment.GetEnvironmentVariable("OUTLOOK_SMTP_PORT") ?? "587", out int smtpPort);
+
+                Console.WriteLine($"[Email Dispatch] Primary Recipient: {recipientEmail ?? "None"}");
+                Console.WriteLine($"[Email Dispatch] Lead / Manager Recipients: {additionalRecipients ?? "None"}");
 
                 emailService.SendReport(report, senderEmail, appPassword, recipientEmail, additionalRecipients, smtpServer, smtpPort);
             }
@@ -167,11 +201,13 @@ namespace CodeMonitor
                 {
                     if (args[i].Equals(param, StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
                     {
-                        return args[i + 1];
+                        string val = args[i + 1];
+                        return string.IsNullOrWhiteSpace(val) ? null : val.Trim();
                     }
                     if (args[i].StartsWith($"{param}=", StringComparison.OrdinalIgnoreCase))
                     {
-                        return args[i].Substring(param.Length + 1);
+                        string val = args[i].Substring(param.Length + 1);
+                        return string.IsNullOrWhiteSpace(val) ? null : val.Trim();
                     }
                 }
             }

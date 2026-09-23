@@ -3,17 +3,11 @@ name: "Automated Code Quality Monitor"
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - '**.cs'
-      - 'src/**'
-      - 'samples/**'
   push:
     branches:
       - main
       - master
       - develop
-    paths:
-      - '**.cs'
 
 jobs:
   code-quality-gate:
@@ -65,21 +59,25 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_AUTHOR_EMAIL: ${{ steps.resolve_author.outputs.email }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
           
           # Outlook / Microsoft 365 SMTP Credentials
           OUTLOOK_SENDER_EMAIL: ${{ secrets.OUTLOOK_SENDER_EMAIL }}
           OUTLOOK_APP_PASSWORD: ${{ secrets.OUTLOOK_APP_PASSWORD }}
-          OUTLOOK_ADDITIONAL_RECIPIENTS: ${{ secrets.OUTLOOK_ADDITIONAL_RECIPIENTS || vars.OUTLOOK_ADDITIONAL_RECIPIENTS }}
+          OUTLOOK_ADDITIONAL_RECIPIENTS: ${{ secrets.OUTLOOK_ADDITIONAL_RECIPIENTS }}
+          OUTLOOK_LEAD_EMAIL: ${{ secrets.OUTLOOK_LEAD_EMAIL }}
+          OUTLOOK_MANAGER_EMAIL: ${{ secrets.OUTLOOK_MANAGER_EMAIL }}
           OUTLOOK_SMTP_SERVER: "smtp.office365.com"
           OUTLOOK_SMTP_PORT: 587
         run: |
           echo "Analyzing changes against base: $BASE_REF for PR Author: $PR_AUTHOR_EMAIL"
+          echo "Workspace: $GITHUB_WORKSPACE"
           dotnet run --project src/CodeMonitor/CodeMonitor.csproj -c Release -f net8.0 --no-build -- \
+            --path "$GITHUB_WORKSPACE" \
             --base-ref "$BASE_REF" \
             --pr-number "$PR_NUMBER" \
             --pr-url "$PR_URL" \
-            --pr-author "$PR_AUTHOR_EMAIL" \
-            --additional-recipients "$OUTLOOK_ADDITIONAL_RECIPIENTS"
+            --pr-author "$PR_AUTHOR_EMAIL"
 
       - name: 💬 Post or Update PR Quality Report Comment
         if: github.event_name == 'pull_request' && always()
