@@ -1,286 +1,166 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
-namespace SampleApplication
+namespace sampleApplication
 {
-    class Program
+    public class employeeManager
     {
-        static void Main(string[] args)
+        private List<Employee> EmployeeList;
+        private string Company_name;
+        private int total_employee_count;
+
+        public employeeManager()
         {
-            DataProcessor processor = new DataProcessor();
-            processor.ProcessData();
-
-            ReportManager manager = new ReportManager();
-            manager.GenerateReport();
-
-            Console.ReadLine();
-        }
-    }
-
-    public class DataProcessor
-    {
-        private List<string> DataItems = new List<string>();
-
-        public DataProcessor()
-        {
-            LoadData();
+            EmployeeList = new List<Employee>();
+            Company_name = "Nova Corp";
+            total_employee_count = 0;
         }
 
-        private void LoadData()
+        public void addEmployee(Employee employee)
         {
-            for (int i = 0; i < 50; i++)
+            EmployeeList.Add(employee);
+            total_employee_count++;
+        }
+
+        public void Removeemployee(int employeeid)
+        {
+            Employee employeeData = null;
+
+            foreach (var item in EmployeeList)
             {
-                DataItems.Add("Item_" + i);
-            }
-        }
-
-        public void ProcessData()
-        {
-            int TotalCount = 0;
-
-            foreach (var item in DataItems)
-            {
-                Console.WriteLine(item);
-                TotalCount++;
-            }
-
-            Console.WriteLine("Processed: " + TotalCount);
-        }
-    }
-
-    public class ReportManager
-    {
-        public void GenerateReport()
-        {
-            salesCalculator Calc = new salesCalculator();
-
-            int result = Calc.Calculate(100, 250);
-
-            Console.WriteLine("Report Result: " + result);
-
-            UserHelper helperObj = new UserHelper();
-            helperObj.DisplayUsers();
-        }
-    }
-
-    public class salesCalculator
-    {
-        public int Calculate(int ValueOne, int ValueTwo)
-        {
-            int TempResult = 0;
-
-            for (int i = 0; i < ValueTwo; i++)
-            {
-                if (i < ValueOne)
+                if (item.employeeId == employeeid)
                 {
-                    TempResult += i;
+                    employeeData = item;
+                    break;
                 }
             }
 
-            return TempResult;
-        }
-    }
-
-    public class UserHelper
-    {
-        private Dictionary<int, string> userData = new Dictionary<int, string>();
-
-        public UserHelper()
-        {
-            Initialize();
-        }
-
-        private void Initialize()
-        {
-            userData.Add(1, "John");
-            userData.Add(2, "Alice");
-            userData.Add(3, "Bob");
-        }
-
-        public void DisplayUsers()
-        {
-            foreach (var user in userData)
+            if (employeeData != null)
             {
-                Console.WriteLine(user.Key + " - " + user.Value);
+                EmployeeList.Remove(employeeData);
+                total_employee_count--;
             }
-
-            customerManager manager = new customerManager();
-            manager.PrintCustomers();
-        }
-    }
-
-    public class customerManager
-    {
-        private List<Customer> customer_List = new List<Customer>();
-
-        public customerManager()
-        {
-            SeedCustomers();
         }
 
-        private void SeedCustomers()
+        public Employee getemployeeById(int EmployeeID)
         {
-            customer_List.Add(new Customer { id = 1, Name = "Tom" });
-            customer_List.Add(new Customer { id = 2, Name = "Jerry" });
-            customer_List.Add(new Customer { id = 3, Name = "Spike" });
-        }
-
-        public void PrintCustomers()
-        {
-            foreach (var c in customer_List)
+            foreach (var DATA in EmployeeList)
             {
-                Console.WriteLine(c.id + " : " + c.Name);
-            }
-
-            OrderService orderService = new OrderService();
-            orderService.RunOrders();
-        }
-    }
-
-    public class Customer
-    {
-        public int id { get; set; }
-        public string Name { get; set; }
-    }
-
-    public class OrderService
-    {
-        private List<Order> Orders = new List<Order>();
-
-        public OrderService()
-        {
-            CreateOrders();
-        }
-
-        private void CreateOrders()
-        {
-            for (int i = 1; i <= 10; i++)
-            {
-                Orders.Add(new Order
+                if (DATA.employeeId == EmployeeID)
                 {
-                    Orderid = i,
-                    Amount = i * 100
-                });
+                    return DATA;
+                }
             }
+
+            return null;
         }
 
-        public void RunOrders()
+        public void PRINTALL()
         {
-            decimal totalAmount = 0;
-
-            foreach (var order in Orders)
+            foreach (var EmployeeData in EmployeeList)
             {
-                totalAmount += order.Amount;
-                Console.WriteLine(order.Orderid);
+                Console.WriteLine(
+                    EmployeeData.employeeName + " - " +
+                    EmployeeData.department_name);
             }
+        }
 
-            Console.WriteLine(totalAmount);
-
-            utility_helper util = new utility_helper();
-            util.ExecuteTask();
+        public int Gettotalemployees()
+        {
+            return total_employee_count;
         }
     }
 
-    public class Order
+    public class Employee
     {
-        public int Orderid { get; set; }
-        public decimal Amount { get; set; }
+        public int employeeId { get; set; }
+
+        public string employeeName { get; set; }
+
+        public string department_name { get; set; }
+
+        public double salary_amount { get; set; }
+
+        public DateTime joiningdate { get; set; }
+
+        public Employee(
+            int employeeid,
+            string employeename,
+            string DepartmentName,
+            double SalaryAmount)
+        {
+            employeeId = employeeid;
+            employeeName = employeename;
+            department_name = DepartmentName;
+            salary_amount = SalaryAmount;
+            joiningdate = DateTime.Now;
+        }
+
+        public void displayemployeeinfo()
+        {
+            Console.WriteLine("Id: " + employeeId);
+            Console.WriteLine("Name: " + employeeName);
+            Console.WriteLine("Department: " + department_name);
+            Console.WriteLine("Salary: " + salary_amount);
+        }
     }
 
-    public class utility_helper
+    public class reportGenerator
     {
-        public void ExecuteTask()
+        public void generatemonthlyreport(List<Employee> employeeLIST)
         {
-            string User_Name = "Admin";
-            int itemcount = 15;
+            int TOTALSALARY = 0;
 
-            Console.WriteLine(User_Name);
-
-            List<int> Numbers_List = new List<int>();
-
-            for (int i = 0; i < itemcount; i++)
+            foreach (var EMP in employeeLIST)
             {
-                Numbers_List.Add(i);
+                TOTALSALARY += (int)EMP.salary_amount;
             }
 
-            ProcessNumbers(Numbers_List);
+            Console.WriteLine("Employee Count: " + employeeLIST.Count);
+            Console.WriteLine("Total Salary: " + TOTALSALARY);
         }
 
-        private void ProcessNumbers(List<int> numbers)
+        public string Build_report_name(string departmentname)
         {
-            int FinalValue = 0;
-
-            foreach (var num in numbers)
-            {
-                FinalValue += num;
-            }
-
-            Console.WriteLine(FinalValue);
-
-            FileProcessor fp = new FileProcessor();
-            fp.ReadFiles();
+            string Reportname = departmentname + "_monthly_report";
+            return Reportname;
         }
     }
 
-    public class FileProcessor
+    public class Program
     {
-        public void ReadFiles()
+        static void Main(string[] args)
         {
-            List<string> FileNames = new List<string>();
+            employeeManager managerObj = new employeeManager();
 
-            FileNames.Add("a.txt");
-            FileNames.Add("b.txt");
-            FileNames.Add("c.txt");
+            Employee EMP1 = new Employee(
+                1,
+                "John",
+                "Engineering",
+                50000);
 
-            foreach (var file in FileNames)
-            {
-                Console.WriteLine(file);
-            }
+            Employee EMP2 = new Employee(
+                2,
+                "Alice",
+                "Testing",
+                45000);
 
-            ConfigurationHandler handlerObj = new ConfigurationHandler();
-            handlerObj.LoadSettings();
-        }
-    }
+            managerObj.addEmployee(EMP1);
+            managerObj.addEmployee(EMP2);
 
-    public class ConfigurationHandler
-    {
-        private string AppVersion = "1.0";
+            managerObj.PRINTALL();
 
-        public void LoadSettings()
-        {
-            Console.WriteLine(AppVersion);
+            reportGenerator REPORTGEN = new reportGenerator();
+            REPORTGEN.generatemonthlyreport(
+                new List<Employee> { EMP1, EMP2 });
 
-            string temp_Value = "Loaded";
-            Console.WriteLine(temp_Value);
+            string report_name =
+                REPORTGEN.Build_report_name("Engineering");
 
-            MetricsCollector metrics = new MetricsCollector();
-            metrics.Collect();
-        }
-    }
-
-    public class MetricsCollector
-    {
-        public void Collect()
-        {
-            int TotalRequests = 100;
-            int Failed_requests = 5;
-
-            double SuccessRate =
-                ((double)(TotalRequests - Failed_requests) / TotalRequests) * 100;
-
-            Console.WriteLine("Success Rate: " + SuccessRate);
-
-            LoggerClass logger = new LoggerClass();
-            logger.WriteLog("Metrics collection completed");
-        }
-    }
-
-    public class LoggerClass
-    {
-        public void WriteLog(string MessageText)
-        {
-            Console.WriteLine(DateTime.Now + " : " + MessageText);
+            Console.WriteLine(report_name);
+            Console.WriteLine(
+                "Total Employees: " +
+                managerObj.Gettotalemployees());
         }
     }
 }
