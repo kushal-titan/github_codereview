@@ -16,7 +16,7 @@ namespace CodeMonitor.Services
                 Console.WriteLine("🛡️  CODE QUALITY GATE: PASSED ✅ (0 Errors, 0 Warnings)");
                 Console.WriteLine("======================================================================");
                 Console.WriteLine("All analyzed files satisfy repository quality, safety, and complexity standards.");
-                Console.WriteLine("::notice title=Code Quality Monitor::✅ All analyzed C# files passed quality checks with zero errors.");
+                Console.WriteLine("::notice title=Code Quality Monitor::✅ All analyzed C# files passed quality checks with zero errors and zero warnings.");
                 return;
             }
 
