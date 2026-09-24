@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CodeMonitor.Models;
@@ -16,10 +17,18 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. SAF001: Potential Null Reference Dereference (Deep chained member access)
+            // 1. SAF001: Potential Null Reference Dereference (Deep chained property access like a.b.c.d)
             foreach (var member in root.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
             {
-                if (member.Expression is MemberAccessExpressionSyntax && member.OperatorToken.IsKind(SyntaxKind.DotToken))
+                // Only inspect the top-level outer chain
+                if (member.Parent is MemberAccessExpressionSyntax)
+                    continue;
+
+                string expr = member.ToString();
+                int dotCount = expr.Count(c => c == '.');
+
+                // Flag deeply nested un-guarded property navigation (>= 3 dots e.g. order.Customer.Address.City)
+                if (dotCount >= 3 && !expr.Contains("?.") && !expr.StartsWith("System.") && !expr.StartsWith("Microsoft."))
                 {
                     int line = member.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                     if (changedLines == null || changedLines.Contains(line))
@@ -27,13 +36,13 @@ namespace CodeMonitor.Analyzers
                         yield return new Violation
                         {
                             RuleId = "SAF001",
-                            RuleName = "Potential Null Reference Dereference",
+                            RuleName = "Deep Member Dereferencing",
                             TargetFile = filePath,
-                            MemberName = member.ToString(),
+                            MemberName = expr,
                             LineNumber = line,
                             Severity = ViolationSeverity.Warning,
-                            Description = $"Chained member access '{member}' may cause a NullReferenceException if an intermediate object is null.",
-                            RecommendedFix = "Use safe navigation (?.) or validate preceding objects before dereferencing."
+                            Description = $"Deeply chained member access '{expr}' may throw NullReferenceException if an intermediate object is null.",
+                            RecommendedFix = "Use safe navigation (e.g., obj?.Property?.SubProperty) or validate preceding objects before dereferencing."
                         };
                     }
                 }

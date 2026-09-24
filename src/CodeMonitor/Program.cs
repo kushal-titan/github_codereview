@@ -69,16 +69,20 @@ namespace CodeMonitor
 
             if (changedFilesMap.Count > 0)
             {
-                targetFiles = changedFilesMap.Keys.Where(File.Exists).ToList();
-                Console.WriteLine($"\n[Git Diff] Detected {targetFiles.Count} modified C# file(s).");
+                targetFiles = changedFilesMap.Keys
+                    .Where(File.Exists)
+                    .Where(f => !f.Replace('/', '\\').Contains(@"\CodeMonitor\"))
+                    .ToList();
+                Console.WriteLine($"\n[Git Diff] Detected {targetFiles.Count} modified C# file(s) for audit.");
             }
             else
             {
-                Console.WriteLine("\n[Scan Mode] Analyzing all .cs files in directory tree...");
+                Console.WriteLine("\n[Scan Mode] Analyzing application .cs files in directory tree...");
                 targetFiles = Directory.GetFiles(targetDir, "*.cs", SearchOption.AllDirectories)
                     .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") &&
                                 !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") &&
-                                !f.Contains($"{Path.DirectorySeparatorChar}.vs{Path.DirectorySeparatorChar}"))
+                                !f.Contains($"{Path.DirectorySeparatorChar}.vs{Path.DirectorySeparatorChar}") &&
+                                !f.Replace('/', '\\').Contains(@"\CodeMonitor\"))
                     .ToList();
                 Console.WriteLine($"Found {targetFiles.Count} C# file(s) for analysis.");
             }

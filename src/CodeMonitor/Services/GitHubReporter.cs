@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using CodeMonitor.Models;
 
@@ -9,20 +10,45 @@ namespace CodeMonitor.Services
     {
         public void EmitWorkflowAnnotations(AnalysisReport report, string workingDirectory)
         {
-            foreach (var violation in report.Violations)
-            {
-                string relativePath = GetRelativePath(violation.TargetFile, workingDirectory);
-                string command = violation.Severity == ViolationSeverity.Error ? "error" : "warning";
-                string title = $"{violation.RuleId}: {violation.RuleName} ({violation.MemberName})";
-                string message = $"{violation.Description} -> How to fix: {violation.RecommendedFix}";
-
-                Console.WriteLine($"::{command} file={relativePath},line={violation.LineNumber},endLine={violation.EndLineNumber},title={title}::{EscapeProperty(message)}");
-            }
-
+            // Print clean, structured console output for human developers
+            Console.WriteLine("\n======================================================================");
             if (report.IsPassed)
             {
-                Console.WriteLine("::notice title=Code Quality Monitor::✅ All modified C# files passed quality checks with zero errors.");
+                Console.WriteLine("🛡️  CODE QUALITY GATE: PASSED ✅ (0 Errors)");
+                Console.WriteLine("======================================================================");
+                Console.WriteLine("All analyzed files satisfy repository quality, safety, and complexity standards.");
+                Console.WriteLine("::notice title=Code Quality Monitor::✅ All analyzed C# files passed quality checks with zero errors.");
+                return;
             }
+
+            Console.WriteLine($"🛡️  CODE QUALITY GATE: ACTION REQUIRED (❌ {report.ErrorCount} Error(s), ⚠️ {report.WarningCount} Warning(s))");
+            Console.WriteLine("======================================================================");
+
+            // Group violations by file for clean readability
+            var fileGroups = report.Violations.GroupBy(v => v.TargetFile);
+
+            foreach (var group in fileGroups)
+            {
+                string relFile = GetRelativePath(group.Key, workingDirectory);
+                Console.WriteLine($"\n📁 File: {relFile}");
+
+                foreach (var v in group)
+                {
+                    string icon = v.Severity == ViolationSeverity.Error ? "❌" : "⚠️";
+                    string level = v.Severity == ViolationSeverity.Error ? "Error" : "Warning";
+                    Console.WriteLine($"  {icon} [{level}] Line {v.LineNumber}: {v.RuleId} - {v.RuleName}");
+                    Console.WriteLine($"     └─ {v.Description}");
+                    Console.WriteLine($"     └─ 💡 Fix: {v.RecommendedFix}");
+
+                    // Emit GitHub workflow command annotation
+                    string command = v.Severity == ViolationSeverity.Error ? "error" : "warning";
+                    string title = $"{v.RuleId}: {v.RuleName}";
+                    string message = $"{v.Description} -> How to fix: {v.RecommendedFix}";
+
+                    Console.WriteLine($"::{command} file={relFile},line={v.LineNumber},endLine={v.EndLineNumber},title={EscapeProperty(title)}::{EscapeData(message)}");
+                }
+            }
+            Console.WriteLine("\n======================================================================");
         }
 
         public void WriteJobSummary(AnalysisReport report, string workingDirectory)
@@ -65,9 +91,9 @@ namespace CodeMonitor.Services
             {
                 sb.AppendLine("## ✅ Code Quality Gate: **PASSED**");
                 sb.AppendLine();
-                sb.AppendLine($"Great work @{report.AuthorName}! All modified C# files meet the repository's code quality standards.");
+                sb.AppendLine($"Great work @{report.AuthorName}! All modified C# files meet the repository's code quality and security standards.");
                 sb.AppendLine();
-                sb.AppendLine("- **Status:** Ready for human review and merge");
+                sb.AppendLine("- **Status:** Ready for peer review and merge ✅");
                 sb.AppendLine($"- **Files Analyzed:** `{report.AnalyzedFiles.Count}` file(s)");
                 sb.AppendLine($"- **Commit:** `{report.CommitSha}`");
                 return sb.ToString();
@@ -76,12 +102,12 @@ namespace CodeMonitor.Services
             sb.AppendLine("## 🚨 Code Quality Check: **ACTION REQUIRED**");
             sb.AppendLine();
             sb.AppendLine($"> [!WARNING]");
-            sb.AppendLine($"> Found **{report.ErrorCount} error(s)** and **{report.WarningCount} warning(s)** in your changes. Please review the locations and recommended fixes below before merging.");
+            sb.AppendLine($"> Found **{report.ErrorCount} error(s)** and **{report.WarningCount} warning(s)** in your changes. Please review the flagged locations and recommended fixes below before merging.");
             sb.AppendLine();
 
-            sb.AppendLine("### 📋 Quick Summary Table");
+            sb.AppendLine("### 📋 Quality Summary Table");
             sb.AppendLine();
-            sb.AppendLine("| Severity | Rule | Location | Target | Actual vs Limit | Quick Fix |");
+            sb.AppendLine("| Severity | Rule | Location | Target | Actual vs Limit | Recommended Remediation |");
             sb.AppendLine("| :---: | :--- | :--- | :--- | :---: | :--- |");
 
             foreach (var v in report.Violations)
@@ -89,51 +115,14 @@ namespace CodeMonitor.Services
                 string badge = v.Severity == ViolationSeverity.Error ? "❌ **Error**" : "⚠️ **Warning**";
                 string relPath = GetRelativePath(v.TargetFile, workingDirectory);
                 string location = $"`{relPath}:{v.LineNumber}`";
-                string metric = $"**{v.ActualValue}** (Max: {v.ThresholdValue})";
+                string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Violation";
 
-                sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}()` | {metric} | {v.RecommendedFix} |");
+                sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
             }
 
             sb.AppendLine();
             sb.AppendLine("---");
-            sb.AppendLine("### 🔍 Step-by-Step Breakdown & Refactoring Examples");
-            sb.AppendLine();
-
-            int index = 1;
-            foreach (var v in report.Violations)
-            {
-                string relPath = GetRelativePath(v.TargetFile, workingDirectory);
-                string badge = v.Severity == ViolationSeverity.Error ? "❌ ERROR" : "⚠️ WARNING";
-
-                sb.AppendLine($"#### {index++}. [{badge}] `{v.RuleId}: {v.RuleName}` in `{v.MemberName}()`");
-                sb.AppendLine();
-                sb.AppendLine($"- **📍 WHERE:** File [`{relPath}`](file:///{v.TargetFile}) at **Line {v.LineNumber} to {v.EndLineNumber}**");
-                sb.AppendLine($"- **⚠️ WHAT:** {v.Description}");
-                sb.AppendLine($"- **💡 WHY:** {v.Rationale}");
-                sb.AppendLine();
-                sb.AppendLine("**🛠️ WHAT TO DO:**");
-                foreach (var step in v.ActionSteps)
-                {
-                    sb.AppendLine($"  1. {step}");
-                }
-
-                if (!string.IsNullOrWhiteSpace(v.CodeExample))
-                {
-                    sb.AppendLine();
-                    sb.AppendLine("<details><summary><b>👉 Click to view Refactoring Example (Before / After)</b></summary>");
-                    sb.AppendLine();
-                    sb.AppendLine("```csharp");
-                    sb.AppendLine(v.CodeExample);
-                    sb.AppendLine("```");
-                    sb.AppendLine();
-                    sb.AppendLine("</details>");
-                }
-
-                sb.AppendLine();
-            }
-
-            sb.AppendLine("---");
-            sb.AppendLine("*🤖 Generated automatically by Roslyn Code Quality Monitor in GitHub Actions.*");
+            sb.AppendLine("*🤖 Automated analysis performed by Microsoft Roslyn in GitHub Actions.*");
 
             return sb.ToString();
         }
@@ -155,6 +144,12 @@ namespace CodeMonitor.Services
         private static string EscapeProperty(string value)
         {
             return value.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A").Replace(":", "%3A").Replace(",", "%2C");
+        }
+
+        private static string EscapeData(string value)
+        {
+            // For GitHub Actions message body, ONLY %, \r, \n should be escaped. Colons (:) and commas (,) MUST NOT be escaped.
+            return value.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A");
         }
     }
 }
