@@ -10,18 +10,24 @@ namespace CodeMonitor.Services
     {
         public void EmitWorkflowAnnotations(AnalysisReport report, string workingDirectory)
         {
-            // Print clean, structured console output for human developers
             Console.WriteLine("\n======================================================================");
-            if (report.IsPassed)
+            if (report.ErrorCount == 0 && report.WarningCount == 0)
             {
-                Console.WriteLine("🛡️  CODE QUALITY GATE: PASSED ✅ (0 Errors)");
+                Console.WriteLine("🛡️  CODE QUALITY GATE: PASSED ✅ (0 Errors, 0 Warnings)");
                 Console.WriteLine("======================================================================");
                 Console.WriteLine("All analyzed files satisfy repository quality, safety, and complexity standards.");
                 Console.WriteLine("::notice title=Code Quality Monitor::✅ All analyzed C# files passed quality checks with zero errors.");
                 return;
             }
 
-            Console.WriteLine($"🛡️  CODE QUALITY GATE: ACTION REQUIRED (❌ {report.ErrorCount} Error(s), ⚠️ {report.WarningCount} Warning(s))");
+            if (report.ErrorCount == 0 && report.WarningCount > 0)
+            {
+                Console.WriteLine($"🛡️  CODE QUALITY GATE: PASSED WITH ADVISORIES ⚠️ (0 Errors, {report.WarningCount} Warning(s))");
+            }
+            else
+            {
+                Console.WriteLine($"🛡️  CODE QUALITY GATE: ACTION REQUIRED (❌ {report.ErrorCount} Error(s), ⚠️ {report.WarningCount} Warning(s))");
+            }
             Console.WriteLine("======================================================================");
 
             // Group violations by file for clean readability
@@ -87,7 +93,7 @@ namespace CodeMonitor.Services
         {
             var sb = new StringBuilder();
 
-            if (report.IsPassed)
+            if (report.ErrorCount == 0 && report.WarningCount == 0)
             {
                 sb.AppendLine("## ✅ Code Quality Gate: **PASSED**");
                 sb.AppendLine();
@@ -99,12 +105,22 @@ namespace CodeMonitor.Services
                 return sb.ToString();
             }
 
-            sb.AppendLine("## 🚨 Code Quality Check: **ACTION REQUIRED**");
-            sb.AppendLine();
-            sb.AppendLine($"> [!WARNING]");
-            sb.AppendLine($"> Found **{report.ErrorCount} error(s)** and **{report.WarningCount} warning(s)** in your changes. Please review the flagged locations and recommended fixes below before merging.");
-            sb.AppendLine();
+            if (report.ErrorCount == 0 && report.WarningCount > 0)
+            {
+                sb.AppendLine("## ⚠️ Code Quality Gate: **PASSED WITH ADVISORIES**");
+                sb.AppendLine();
+                sb.AppendLine($"> [!NOTE]");
+                sb.AppendLine($"> Quality gate passed with **{report.WarningCount} advisory warning(s)**. Please review the recommendations below.");
+            }
+            else
+            {
+                sb.AppendLine("## 🚨 Code Quality Check: **ACTION REQUIRED**");
+                sb.AppendLine();
+                sb.AppendLine($"> [!WARNING]");
+                sb.AppendLine($"> Found **{report.ErrorCount} error(s)** and **{report.WarningCount} warning(s)** in your changes. Please resolve the critical errors before merging.");
+            }
 
+            sb.AppendLine();
             sb.AppendLine("### 📋 Quality Summary Table");
             sb.AppendLine();
             sb.AppendLine("| Severity | Rule | Location | Target | Actual vs Limit | Recommended Remediation |");
@@ -115,7 +131,7 @@ namespace CodeMonitor.Services
                 string badge = v.Severity == ViolationSeverity.Error ? "❌ **Error**" : "⚠️ **Warning**";
                 string relPath = GetRelativePath(v.TargetFile, workingDirectory);
                 string location = $"`{relPath}:{v.LineNumber}`";
-                string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Violation";
+                string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Advisory";
 
                 sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
             }
@@ -148,7 +164,6 @@ namespace CodeMonitor.Services
 
         private static string EscapeData(string value)
         {
-            // For GitHub Actions message body, ONLY %, \r, \n should be escaped. Colons (:) and commas (,) MUST NOT be escaped.
             return value.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A");
         }
     }
