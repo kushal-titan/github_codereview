@@ -33,10 +33,26 @@ namespace CodeMonitor
 
             var analyzers = new List<ICodeAnalyzer>
             {
+                // Category 1: Structural & Complexity
                 new MethodLengthAnalyzer(),
                 new ComplexityAnalyzer(),
                 new ParameterCountAnalyzer(),
-                new NestingDepthAnalyzer()
+                new NestingDepthAnalyzer(),
+
+                // Category 2: Runtime Safety & Bugs
+                new RuntimeSafetyAnalyzer(),
+
+                // Category 3: Concurrency & Async
+                new ConcurrencyAnalyzer(),
+
+                // Category 4: Security & Vulnerabilities
+                new SecurityAnalyzer(),
+
+                // Category 5: Performance & Memory
+                new PerformanceAnalyzer(),
+
+                // Category 6: Architecture & Standards
+                new ArchitectureAnalyzer()
             };
 
             // Retrieve Git and environment metadata
