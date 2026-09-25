@@ -160,5 +160,5 @@ namespace SampleApp
 
             return order.Items.Count > 0;
         }
-    }
+    }//another//
 }
