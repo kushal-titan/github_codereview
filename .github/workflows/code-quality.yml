@@ -136,6 +136,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           echo "Checking for warnings report..."
@@ -154,11 +155,23 @@ jobs:
             gh issue create \
               --repo "${{ github.repository }}" \
               --title "$TITLE" \
-              --body-file "issues/latest_warnings.md" || {
-                echo "gh issue create failed, checking error..."
+              --body-file "issues/latest_warnings.md" && echo "✅ Successfully created GitHub Issue!" || {
+                echo "⚠️ Note: gh issue create encountered an error. If 403 Forbidden, please enable 'Read and write permissions' in Repo Settings -> Actions -> General -> Workflow permissions."
               }
           else
             echo "No advisory warnings file generated (0 warnings in this analysis run)."
+          fi
+
+      - name: 💾 Commit & Push Warnings Report to Branch
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -d "issues" ] && [ -n "$(ls -A issues/warnings_*.md 2>/dev/null)" ]; then
+            echo "Committing generated warnings report (.md) to branch..."
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add issues/
+            git commit -m "chore(quality): save advisory warnings report (.md) [skip ci]" || echo "No new files to commit"
+            git push origin HEAD:${{ github.head_ref }} || echo "Could not push directly to branch"
           fi
 
       - name: 📦 Archive Warnings Report Artifacts (.md)
