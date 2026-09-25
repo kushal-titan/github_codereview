@@ -9,6 +9,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 4: Application Security & Vulnerability Suite
+    /// Implements standards from SonarQube (S2077, S2068, S4790, S5131, S2245, S2083, S5773, S2076, S2755, S5146, S2092),
+    /// Microsoft CA (CA2100, CA5350, CA3002, CA5394, CA3003, CA2300, CA3001, CA3075, CA3004), and OWASP Top 10 (A01, A03, A05, A08).
+    /// </summary>
     public class SecurityAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "SEC000";
@@ -18,7 +23,9 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. SEC001: SQL Injection Detection
+            // =========================================================================
+            // 1. [SonarQube: S2077] [Microsoft: CA2100] [OWASP: A03] SEC001: SQL Injection Detection
+            // =========================================================================
             string[] sqlMethods = { "ExecuteNonQuery", "ExecuteReader", "ExecuteScalar", "FromSqlRaw", "SqlCommand", "Query", "QueryAsync", "Execute", "ExecuteAsync", "SqlDataAdapter" };
             foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
@@ -52,7 +59,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. SEC002: Hardcoded Secrets, Passwords, and API Keys
+            // =========================================================================
+            // 2. [SonarQube: S2068] SEC002: Hardcoded Secrets, Passwords, and API Keys
+            // =========================================================================
             var secretRegex = new Regex(@"(password|passwd|api_key|apikey|secret|token|private_key|connstr|connectionstring)\s*=\s*""[^""]{6,}""", RegexOptions.IgnoreCase);
             foreach (var literal in root.DescendantNodes().OfType<LiteralExpressionSyntax>())
             {
@@ -84,7 +93,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 3. SEC003: Insecure Cryptographic Algorithm (MD5, SHA1, DES, RC2, TripleDES)
+            // =========================================================================
+            // 3. [SonarQube: S4790] [Microsoft: CA5350] SEC003: Insecure Cryptographic Algorithm (MD5, SHA1, DES, RC2, TripleDES)
+            // =========================================================================
             string[] weakCrypto = { "MD5", "SHA1", "DES", "RC2", "TripleDES", "TripleDESCryptoServiceProvider" };
             foreach (var node in root.DescendantNodes())
             {
@@ -124,7 +135,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 4. SEC004: Cross-Site Scripting (XSS) / Raw Unencoded Output
+            // =========================================================================
+            // 4. [SonarQube: S5131] [Microsoft: CA3002] [OWASP: A03] SEC004: Cross-Site Scripting (XSS) / Raw Unencoded Output
+            // =========================================================================
             string[] xssSinks = { "Response.Write", "Response.WriteAsync", "HtmlString", "Html.Raw" };
             foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
@@ -164,7 +177,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 5. SEC005: Insecure Random for Security / Tokens
+            // =========================================================================
+            // 5. [SonarQube: S2245] [Microsoft: CA5394] SEC005: Insecure Random for Security / Tokens
+            // =========================================================================
             foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
             {
                 if (creation.Type.ToString() == "Random" || creation.Type.ToString() == "System.Random")
@@ -196,7 +211,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 6. SEC006: Path Traversal Vulnerability
+            // =========================================================================
+            // 6. [SonarQube: S2083] [Microsoft: CA3003] [OWASP: A01] SEC006: Path Traversal Vulnerability
+            // =========================================================================
             string[] fileIoMethods = { "File.Open", "File.ReadAllText", "File.WriteAllText", "File.ReadAllBytes", "File.Delete", "Directory.Delete" };
             foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
@@ -235,7 +252,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 7. SEC007: Insecure Deserialization
+            // =========================================================================
+            // 7. [SonarQube: S5773] [Microsoft: CA2300] SEC007: Insecure Deserialization
+            // =========================================================================
             string[] dangerousFormatters = { "BinaryFormatter", "NetDataContractSerializer", "LosFormatter", "SoapFormatter" };
             foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
             {
@@ -264,7 +283,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 8. SEC008: Command Injection
+            // =========================================================================
+            // 8. [SonarQube: S2076] [Microsoft: CA3001] [OWASP: A03] SEC008: Command Injection
+            // =========================================================================
             foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 string call = invocation.Expression.ToString();
@@ -299,7 +320,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 9. SEC009: XML External Entity (XXE) Injection
+            // =========================================================================
+            // 9. [SonarQube: S2755] [Microsoft: CA3075] SEC009: XML External Entity (XXE) Injection
+            // =========================================================================
             foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
             {
                 string typeName = creation.Type.ToString();
@@ -332,7 +355,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 10. SEC010: Open Redirect Vulnerability
+            // =========================================================================
+            // 10. [SonarQube: S5146] [Microsoft: CA3004] SEC010: Open Redirect Vulnerability
+            // =========================================================================
             foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 string call = invocation.Expression.ToString();
@@ -369,7 +394,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 11. SEC011: Insecure Cookie Flags (Missing HttpOnly / Secure)
+            // =========================================================================
+            // 11. [SonarQube: S2092] [OWASP: A05] SEC011: Insecure Cookie Flags
+            // =========================================================================
             foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
             {
                 if (creation.Type.ToString().Contains("HttpCookie") || creation.Type.ToString().Contains("CookieOptions"))

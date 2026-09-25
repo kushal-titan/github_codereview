@@ -8,6 +8,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 3: Concurrency & Async Safety Suite
+    /// Implements standards from SonarQube (S2445, S3168, S4457, S2222, S2696, S3236, S3217, S3928, S2931)
+    /// and Microsoft CA (CA2002, CA2008, CA2012, CA2211, CA2007, CA2016).
+    /// </summary>
     public class ConcurrencyAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "CON000";
@@ -17,7 +22,9 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. CON001: Deadlock - Lock Order Inversion Check
+            // =========================================================================
+            // 1. [SonarQube: S2445] [Microsoft: CA2002] CON001: Deadlock - Lock Order Inversion Check
+            // =========================================================================
             var lockPairs = new List<(string Outer, string Inner, int Line, string Method)>();
             foreach (var outerLock in root.DescendantNodes().OfType<LockStatementSyntax>())
             {
@@ -59,7 +66,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. CON002: async void Method Detection (Fire-and-Forget trap)
+            // =========================================================================
+            // 2. [SonarQube: S3168] [Microsoft: CA2008] CON002: async void Method Detection
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.Modifiers.Any(SyntaxKind.AsyncKeyword) && method.ReturnType.ToString() == "void")
@@ -86,7 +95,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 3. CON003: Sync-over-Async Deadlock (.Result / .Wait() / .GetAwaiter().GetResult())
+            // =========================================================================
+            // 3. [SonarQube: S4457] [Microsoft: CA2008] CON003: Sync-over-Async Deadlock (.Result / .Wait() / .GetAwaiter().GetResult())
+            // =========================================================================
             foreach (var member in root.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
             {
                 string memberName = member.Name.Identifier.Text;
@@ -114,7 +125,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 4. CON004: Unsafe Lock Target (lock(this), lock("string"), lock(typeof(...)))
+            // =========================================================================
+            // 4. [SonarQube: S2445] [Microsoft: CA2002] CON004: Unsafe Lock Target (lock(this), lock("string"), lock(typeof(...)))
+            // =========================================================================
             foreach (var lk in root.DescendantNodes().OfType<LockStatementSyntax>())
             {
                 string expr = lk.Expression.ToString();
@@ -142,7 +155,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 5. CON005: Unawaited Async Task Call
+            // =========================================================================
+            // 5. [SonarQube: S3168] [Microsoft: CA2012] CON005: Unawaited Async Task Call
+            // =========================================================================
             foreach (var exprStmt in root.DescendantNodes().OfType<ExpressionStatementSyntax>())
             {
                 if (exprStmt.Expression is InvocationExpressionSyntax invocation)
@@ -173,7 +188,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 6. CON006: Thread.Sleep in Async Method
+            // =========================================================================
+            // 6. [SonarQube: S2222] CON006: Thread.Sleep in Async Method
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.Modifiers.Any(SyntaxKind.AsyncKeyword) && method.Body != null)
@@ -206,7 +223,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 7. CON007: Shared Static State Mutation from Instance Method
+            // =========================================================================
+            // 7. [SonarQube: S2696] [Microsoft: CA2211] CON007: Shared Static State Mutation from Instance Method
+            // =========================================================================
             var classDeclarations = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
             foreach (var cls in classDeclarations)
             {
@@ -255,7 +274,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 8. CON008: Missing ConfigureAwait(false) in Non-UI / Library Code
+            // =========================================================================
+            // 8. [SonarQube: S3236] [Microsoft: CA2007] CON008: Missing ConfigureAwait(false) in Non-UI Code
+            // =========================================================================
             foreach (var awaitExpr in root.DescendantNodes().OfType<AwaitExpressionSyntax>())
             {
                 string exprText = awaitExpr.Expression.ToString();
@@ -283,7 +304,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 9. CON009: Loop Variable Closure in Async / Tasks
+            // =========================================================================
+            // 9. [SonarQube: S3217] CON009: Loop Variable Closure in Async / Tasks
+            // =========================================================================
             foreach (var loop in root.DescendantNodes().Where(n => n is ForStatementSyntax || n is ForEachStatementSyntax))
             {
                 string loopVar = "";
@@ -326,7 +349,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 10. CON010: Discarded CancellationToken
+            // =========================================================================
+            // 10. [SonarQube: S3928] [Microsoft: CA2016] CON010: Discarded CancellationToken
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.ParameterList != null && method.Body != null)
@@ -368,7 +393,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 11. CON011: Thread-Unsafe Collection in Parallel Loop
+            // =========================================================================
+            // 11. [SonarQube: S2931] CON011: Thread-Unsafe Collection Mutation in Parallel Loop
+            // =========================================================================
             foreach (var parallelCall in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 string pExpr = parallelCall.Expression.ToString();

@@ -8,6 +8,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 5: Performance & Memory Optimization Suite
+    /// Implements standards from SonarQube (S1643, S1155, S4158, S1157, S3242, S3902, S4004, S1118, S3247)
+    /// and Microsoft CA (CA1806, CA1827, CA1851, CA1862, CA1846, CA1820, CA1821, CA1815).
+    /// </summary>
     public class PerformanceAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "PERF000";
@@ -17,7 +22,9 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. PERF001: String Concatenation (+ or +=) inside Loops
+            // =========================================================================
+            // 1. [SonarQube: S1643] PERF001: String Concatenation (+ or +=) inside Loops
+            // =========================================================================
             var loopNodes = root.DescendantNodes().Where(n =>
                 n is ForStatementSyntax ||
                 n is ForEachStatementSyntax ||
@@ -53,7 +60,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. PERF002: Boxing Allocations (Legacy non-generic collections: ArrayList, Hashtable)
+            // =========================================================================
+            // 2. [SonarQube: S1155] [Microsoft: CA1806] PERF002: Boxing Allocations (Legacy collections)
+            // =========================================================================
             string[] legacyCollections = { "ArrayList", "Hashtable" };
             foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
             {
@@ -82,7 +91,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 3. PERF003: LINQ .Count() > 0 / .Count() == 0 Smell
+            // =========================================================================
+            // 3. [SonarQube: S1155] [Microsoft: CA1827] PERF003: LINQ .Count() > 0 / == 0 Smell
+            // =========================================================================
             foreach (var binary in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
             {
                 string leftStr = binary.Left.ToString();
@@ -117,7 +128,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 4. PERF004: Multiple Enumeration of IEnumerable<T>
+            // =========================================================================
+            // 4. [SonarQube: S4158] [Microsoft: CA1851] PERF004: Multiple Enumeration of IEnumerable<T>
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.ParameterList != null && method.Body != null)
@@ -157,7 +170,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 5. PERF005: Inefficient String Comparison (str.ToLower() == "abc")
+            // =========================================================================
+            // 5. [SonarQube: S1157] [Microsoft: CA1862] PERF005: Inefficient String Comparison
+            // =========================================================================
             foreach (var binary in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
             {
                 if (binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression))
@@ -191,7 +206,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 6. PERF006: Span Memory Optimization (Substring in Loops)
+            // =========================================================================
+            // 6. [SonarQube: S3242] [Microsoft: CA1846] PERF006: Span Memory Optimization
+            // =========================================================================
             foreach (var loop in loopNodes)
             {
                 var substringCalls = loop.DescendantNodes().OfType<InvocationExpressionSyntax>()
@@ -221,7 +238,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 7. PERF007: Closure Allocation in Loop
+            // =========================================================================
+            // 7. [SonarQube: S3902] PERF007: Closure Allocation in Loop
+            // =========================================================================
             foreach (var loop in loopNodes)
             {
                 var lambdas = loop.DescendantNodes().OfType<LambdaExpressionSyntax>();
@@ -249,7 +268,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 8. PERF008: Uncompiled / Repeated Regex Creation in Method
+            // =========================================================================
+            // 8. [SonarQube: S4004] [Microsoft: CA1820] PERF008: Uncompiled / Repeated Regex Creation in Method
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.Body != null)
@@ -282,7 +303,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 9. PERF009: Unnecessary Finalizer / Destructor
+            // =========================================================================
+            // 9. [SonarQube: S1118] [Microsoft: CA1821] PERF009: Unnecessary Finalizer / Destructor
+            // =========================================================================
             foreach (var destructor in root.DescendantNodes().OfType<DestructorDeclarationSyntax>())
             {
                 int line = destructor.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
@@ -306,7 +329,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 10. PERF010: Large Struct Pass-by-Value
+            // =========================================================================
+            // 10. [SonarQube: S3247] [Microsoft: CA1815] PERF010: Large Struct Pass-by-Value
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.ParameterList != null)

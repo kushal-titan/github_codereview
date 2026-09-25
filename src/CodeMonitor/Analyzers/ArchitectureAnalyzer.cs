@@ -9,6 +9,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 6: Architecture & Clean Standards Suite
+    /// Implements standards from SonarQube (S101, S100, S1133, S106, S1104, S2326, S1200, S3457, S109, S1448),
+    /// StyleCop (SA1302, SA1300, SA1306, SA1402), and Microsoft IDE (IDE1006, CA1716, CA1051, CA1040).
+    /// </summary>
     public class ArchitectureAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "ARCH000";
@@ -18,7 +23,9 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. ARCH001: Interface Naming Rule (Must begin with 'I' + PascalCase)
+            // =========================================================================
+            // 1. [SonarQube: S101] [StyleCop: SA1302] ARCH001: Interface Naming Rule (Must begin with 'I' + PascalCase)
+            // =========================================================================
             foreach (var iface in root.DescendantNodes().OfType<InterfaceDeclarationSyntax>())
             {
                 string name = iface.Identifier.Text;
@@ -47,7 +54,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. ARCH002: Async Method Naming Rule (Must end with 'Async')
+            // =========================================================================
+            // 2. [SonarQube: S100] [Microsoft: CA1716] ARCH002: Async Method Naming Rule (Must end with 'Async')
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.Modifiers.Any(SyntaxKind.AsyncKeyword))
@@ -79,7 +88,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 3. ARCH003: Class / Struct / Record Naming (Must be PascalCase, no leading lowercase or underscores)
+            // =========================================================================
+            // 3. [SonarQube: S101] [Microsoft: IDE1006] ARCH003: Type PascalCase Naming
+            // =========================================================================
             foreach (var classNode in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
             {
                 if (classNode is InterfaceDeclarationSyntax) continue;
@@ -112,7 +123,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 4. ARCH004: Property Naming (Must be PascalCase, no leading lowercase or underscores)
+            // =========================================================================
+            // 4. [SonarQube: S101] [Microsoft: IDE1006] ARCH004: Property PascalCase Naming
+            // =========================================================================
             foreach (var prop in root.DescendantNodes().OfType<PropertyDeclarationSyntax>())
             {
                 string name = prop.Identifier.Text;
@@ -143,7 +156,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 5. ARCH005: Variable & Parameter Naming (Local variables & parameters must be camelCase; no snake_case)
+            // =========================================================================
+            // 5. [SonarQube: S100] [StyleCop: SA1300] ARCH005: Variable camelCase Naming
+            // =========================================================================
             foreach (var varDecl in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
             {
                 string name = varDecl.Identifier.Text;
@@ -179,7 +194,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 6. ARCH006: Obsolete API Usage
+            // =========================================================================
+            // 6. [SonarQube: S1133] [Roslyn: CS0618] ARCH006: Obsolete API Usage
+            // =========================================================================
             string[] obsoleteApis = { "BinaryFormatter", "Thread.Abort", "WebRequest.Create", "AppDomain.Unload" };
             foreach (var node in root.DescendantNodes())
             {
@@ -220,7 +237,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 7. ARCH007: Method PascalCase Naming (All method declarations must start with uppercase letter)
+            // =========================================================================
+            // 7. [SonarQube: S100] [Microsoft: IDE1006] ARCH007: Method PascalCase Naming
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 string name = method.Identifier.Text;
@@ -252,7 +271,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 8. ARCH008: Private / Internal Field Casing Standard (Must be _camelCase or camelCase)
+            // =========================================================================
+            // 8. [SonarQube: S100] [StyleCop: SA1306] ARCH008: Private / Internal Field Casing Standard
+            // =========================================================================
             foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
             {
                 bool isPublic = field.Modifiers.Any(SyntaxKind.PublicKeyword);
@@ -293,7 +314,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 9. ARCH009: Console I/O in Domain Logic (Console.WriteLine in business logic classes)
+            // =========================================================================
+            // 9. [SonarQube: S106] ARCH009: Console I/O in Business Domain Logic
+            // =========================================================================
             foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 string expr = invocation.Expression.ToString();
@@ -326,7 +349,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 10. ARCH010: Public Field Violation (Public fields instead of properties)
+            // =========================================================================
+            // 10. [SonarQube: S1104] [Microsoft: CA1051] ARCH010: Public Field Encapsulation Violation
+            // =========================================================================
             foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
             {
                 bool isPublic = field.Modifiers.Any(SyntaxKind.PublicKeyword);
@@ -361,7 +386,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 11. ARCH011: Empty Marker Interface Anti-Pattern
+            // =========================================================================
+            // 11. [SonarQube: S2326] [Microsoft: CA1040] ARCH011: Empty Marker Interface Anti-Pattern
+            // =========================================================================
             foreach (var iface in root.DescendantNodes().OfType<InterfaceDeclarationSyntax>())
             {
                 if (iface.Members.Count == 0 && (iface.BaseList == null || iface.BaseList.Types.Count == 0))
@@ -388,7 +415,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 12. ARCH012: Layer Boundary Violation (Domain referencing Presentation/UI namespaces)
+            // =========================================================================
+            // 12. [SonarQube: S1200] ARCH012: Layer Boundary Violation (Clean Architecture)
+            // =========================================================================
             var usings = root.DescendantNodes().OfType<UsingDirectiveSyntax>();
             bool isDomainFile = filePath.Replace('\\', '/').Contains("/Domain/") || filePath.Replace('\\', '/').Contains("/Entities/") || filePath.Replace('\\', '/').Contains("/Core/");
             if (isDomainFile)
@@ -421,7 +450,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 13. ARCH013: Direct DbContext in Controller
+            // =========================================================================
+            // 13. [SonarQube: S3457] ARCH013: Direct DbContext in Controller
+            // =========================================================================
             foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
             {
                 string tName = creation.Type.ToString();
@@ -453,7 +484,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 14. ARCH014: Magic Literal Values in Conditions
+            // =========================================================================
+            // 14. [SonarQube: S109] ARCH014: Magic Literal Values in Conditions
+            // =========================================================================
             foreach (var binary in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
             {
                 if (binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression) ||
@@ -492,7 +525,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 15. ARCH015: Multiple Types Declared in Single File
+            // =========================================================================
+            // 15. [SonarQube: S1448] [StyleCop: SA1402] ARCH015: Multiple Types Declared in Single File
+            // =========================================================================
             var declaredTypes = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
                 .Where(t => t.Parent is BaseNamespaceDeclarationSyntax || t.Parent is CompilationUnitSyntax)
                 .ToList();

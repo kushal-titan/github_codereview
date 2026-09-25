@@ -3,15 +3,18 @@ using System.Linq;
 using CodeMonitor.Knowledge;
 using CodeMonitor.Models;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 1: Structural Complexity
+    /// // [SonarQube: S134] [Clean Code: Arrow Anti-Pattern] Excessive Block Nesting Depth
+    /// </summary>
     public class NestingDepthAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "CQ004";
-        public string RuleName => "Deep Control Flow Nesting";
+        public string RuleName => "Deep Nesting Depth";
 
         public IEnumerable<Violation> Analyze(SyntaxTree tree, string filePath, QualityConfig config, ISet<int>? changedLines = null)
         {
@@ -34,7 +37,8 @@ namespace CodeMonitor.Analyzers
                     }
                 }
 
-                int maxDepth = GetMaxNestingDepth(method, 0);
+                // // [SonarQube: S134] Check maximum statement nesting depth
+                int maxDepth = CalculateMaxNesting(method);
 
                 if (maxDepth > config.MaxNestingDepth)
                 {
@@ -55,7 +59,7 @@ namespace CodeMonitor.Analyzers
                         ActualValue = maxDepth,
                         ThresholdValue = config.MaxNestingDepth,
                         Severity = maxDepth > (config.MaxNestingDepth + 1) ? ViolationSeverity.Error : ViolationSeverity.Warning,
-                        Description = $"Method '{methodName}' has a maximum nesting depth of {maxDepth} (maximum allowed: {config.MaxNestingDepth}).",
+                        Description = $"Method '{methodName}' has a statement nesting depth of {maxDepth} (maximum allowed: {config.MaxNestingDepth}).",
                         Rationale = rationale,
                         RecommendedFix = recommendation,
                         ActionSteps = steps,
@@ -65,37 +69,32 @@ namespace CodeMonitor.Analyzers
             }
         }
 
-        private static int GetMaxNestingDepth(SyntaxNode node, int currentDepth)
+        private static int CalculateMaxNesting(SyntaxNode methodNode)
         {
-            int max = currentDepth;
+            int maxDepth = 0;
+            var blocks = methodNode.DescendantNodes().OfType<BlockSyntax>();
 
-            foreach (var child in node.ChildNodes())
+            foreach (var block in blocks)
             {
-                int nextDepth = currentDepth;
-                if (IsNestingBlock(child))
+                int currentDepth = 0;
+                var current = block.Parent;
+
+                while (current != null && current != methodNode)
                 {
-                    nextDepth++;
+                    if (current is BlockSyntax)
+                    {
+                        currentDepth++;
+                    }
+                    current = current.Parent;
                 }
 
-                int childMax = GetMaxNestingDepth(child, nextDepth);
-                if (childMax > max)
+                if (currentDepth > maxDepth)
                 {
-                    max = childMax;
+                    maxDepth = currentDepth;
                 }
             }
 
-            return max;
-        }
-
-        private static bool IsNestingBlock(SyntaxNode node)
-        {
-            return node is IfStatementSyntax
-                || node is WhileStatementSyntax
-                || node is ForStatementSyntax
-                || node is ForEachStatementSyntax
-                || node is DoStatementSyntax
-                || node is SwitchStatementSyntax
-                || node is TryStatementSyntax;
+            return maxDepth;
         }
     }
 }

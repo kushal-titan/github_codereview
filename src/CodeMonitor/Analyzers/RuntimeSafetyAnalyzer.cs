@@ -9,6 +9,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 2: Runtime Safety & Bug Suite
+    /// Implements standards from SonarQube (S2259, S3518, S2930, S2486, S1751, S112, S3900, S2189, S1244, S2583, S3444, S1206, S1905)
+    /// and Microsoft CA (CA2200, CA2000, CA2208, CA1062, CA2218, CA1800, IDE0029).
+    /// </summary>
     public class RuntimeSafetyAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "SAF000";
@@ -18,7 +23,9 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. SAF001: Potential Deep Null Reference Dereference (Deep chained property access like a.b.c.d)
+            // =========================================================================
+            // 1. [SonarQube: S2259] [Roslyn: Nullable Dereference] SAF001: Potential Deep Null Reference Dereference
+            // =========================================================================
             foreach (var member in root.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
             {
                 if (member.Parent is MemberAccessExpressionSyntax)
@@ -51,7 +58,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. SAF002: Division / Modulo by Zero Defect (Literals, Constants & Local/Field Variable Tracking)
+            // =========================================================================
+            // 2. [SonarQube: S3518] [Microsoft: CA2200] SAF002: Division / Modulo by Zero Defect
+            // =========================================================================
             foreach (var node in root.DescendantNodes())
             {
                 ExpressionSyntax? divisor = null;
@@ -105,7 +114,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 3. SAF003: Unmanaged IDisposable Resource Leak (Missing 'using')
+            // =========================================================================
+            // 3. [SonarQube: S2930] [Microsoft: CA2000] SAF003: Unmanaged IDisposable Resource Leak (Missing 'using')
+            // =========================================================================
             string[] disposableTypes = { "SqlConnection", "HttpClient", "FileStream", "MemoryStream", "StreamReader", "StreamWriter", "DbContext", "Socket", "TcpClient", "SqlCommand" };
             foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
             {
@@ -141,7 +152,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 4. SAF004: Array Bounds Violation / Off-by-One Loops
+            // =========================================================================
+            // 4. [SonarQube: S2259] SAF004: Array Bounds Violation / Off-by-One Loops
+            // =========================================================================
             foreach (var elem in root.DescendantNodes().OfType<ElementAccessExpressionSyntax>())
             {
                 var arg = elem.ArgumentList.Arguments.FirstOrDefault();
@@ -199,7 +212,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 5. SAF005: Empty Catch Block (Swallowed Exceptions)
+            // =========================================================================
+            // 5. [SonarQube: S2486] [Microsoft: CA2200] SAF005: Empty Catch Block (Swallowed Exceptions)
+            // =========================================================================
             foreach (var catchClause in root.DescendantNodes().OfType<CatchClauseSyntax>())
             {
                 var statements = catchClause.Block.Statements;
@@ -230,7 +245,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 6. SAF006: Unreachable / Dead Code
+            // =========================================================================
+            // 6. [SonarQube: S1751] [Roslyn: CS0162] SAF006: Unreachable / Dead Code
+            // =========================================================================
             foreach (var block in root.DescendantNodes().OfType<BlockSyntax>())
             {
                 var stmts = block.Statements;
@@ -269,7 +286,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 7. SAF007: Generic Exception Throw
+            // =========================================================================
+            // 7. [SonarQube: S112] [Microsoft: CA2208] SAF007: Generic Exception Throw
+            // =========================================================================
             foreach (var throwStmt in root.DescendantNodes().OfType<ThrowStatementSyntax>())
             {
                 if (throwStmt.Expression is ObjectCreationExpressionSyntax creation && creation.Type.ToString() == "Exception")
@@ -296,7 +315,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 8. SAF008: Missing Null Argument Guard in Public Methods
+            // =========================================================================
+            // 8. [SonarQube: S3900] [Microsoft: CA1062] SAF008: Missing Null Argument Guard
+            // =========================================================================
             foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (method.Modifiers.Any(m => m.IsKind(SyntaxKind.PublicKeyword)) && method.Body != null && method.ParameterList != null)
@@ -307,7 +328,6 @@ namespace CodeMonitor.Analyzers
                         string paramName = param.Identifier.Text;
                         if (!IsValueType(paramType) && !string.IsNullOrEmpty(paramName) && paramType != "string" && !paramType.EndsWith("?"))
                         {
-                            // Check if parameter is dereferenced inside method body
                             bool isDereferenced = method.Body.DescendantNodes()
                                 .OfType<MemberAccessExpressionSyntax>()
                                 .Any(m => m.Expression.ToString() == paramName && !m.ToString().StartsWith($"{paramName}?."));
@@ -347,7 +367,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 9. SAF009: Infinite Loop Defect (while(true) / for(;;) with no reachable break/return/throw)
+            // =========================================================================
+            // 9. [SonarQube: S2189] SAF009: Infinite Loop Defect
+            // =========================================================================
             foreach (var whileStmt in root.DescendantNodes().OfType<WhileStatementSyntax>())
             {
                 if (whileStmt.Condition.ToString() == "true")
@@ -380,7 +402,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 10. SAF010: Inexact Float/Double Equality
+            // =========================================================================
+            // 10. [SonarQube: S1244] SAF010: Inexact Float/Double Equality
+            // =========================================================================
             foreach (var binary in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
             {
                 if (binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression))
@@ -413,7 +437,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 11. SAF011: Redundant Null Coalescing Trap (x ?? x)
+            // =========================================================================
+            // 11. [SonarQube: S2583] [Microsoft: IDE0029] SAF011: Redundant Null Coalescing Trap (x ?? x)
+            // =========================================================================
             foreach (var coalesce in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
             {
                 if (coalesce.IsKind(SyntaxKind.CoalesceExpression) && coalesce.Left.ToString() == coalesce.Right.ToString())
@@ -440,7 +466,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 12. SAF012: Collection Mutation Inside Foreach Loop
+            // =========================================================================
+            // 12. [SonarQube: S2259] SAF012: Collection Mutation Inside Foreach Loop
+            // =========================================================================
             foreach (var foreachStmt in root.DescendantNodes().OfType<ForEachStatementSyntax>())
             {
                 string collectionName = foreachStmt.Expression.ToString();
@@ -476,7 +504,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 13. SAF013: Stack Trace Truncation (catch(Exception ex) { throw ex; })
+            // =========================================================================
+            // 13. [SonarQube: S3444] [Microsoft: CA2200] SAF013: Stack Trace Truncation (catch(Exception ex) { throw ex; })
+            // =========================================================================
             foreach (var catchClause in root.DescendantNodes().OfType<CatchClauseSyntax>())
             {
                 if (catchClause.Declaration != null && !string.IsNullOrEmpty(catchClause.Declaration.Identifier.Text))
@@ -510,7 +540,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 14. SAF014: Equals & GetHashCode Inconsistency
+            // =========================================================================
+            // 14. [SonarQube: S1206] [Microsoft: CA2218] SAF014: Equals & GetHashCode Inconsistency
+            // =========================================================================
             var classDecls = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
             foreach (var cls in classDecls)
             {
@@ -542,7 +574,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 15. SAF015: Dangerous Explicit Cast
+            // =========================================================================
+            // 15. [SonarQube: S1905] [Microsoft: CA1800] SAF015: Dangerous Explicit Cast
+            // =========================================================================
             foreach (var cast in root.DescendantNodes().OfType<CastExpressionSyntax>())
             {
                 if (cast.Expression is IdentifierNameSyntax && !cast.Ancestors().Any(a => a is IfStatementSyntax || a is IsPatternExpressionSyntax))

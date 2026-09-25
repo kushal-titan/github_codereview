@@ -7,6 +7,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 1: Structural Complexity
+    /// // [SonarQube: S107] [Microsoft: CA1068] Excessive Parameter Count
+    /// </summary>
     public class ParameterCountAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "CQ003";
@@ -33,6 +37,7 @@ namespace CodeMonitor.Analyzers
                     }
                 }
 
+                // // [SonarQube: S107] [Microsoft: CA1068] Excessive parameter count check
                 int paramCount = method.ParameterList?.Parameters.Count ?? 0;
 
                 if (paramCount > config.MaxParameterCount)

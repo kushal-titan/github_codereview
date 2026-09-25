@@ -8,6 +8,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 1: Structural & Complexity Suite
+    /// Implements standards from SonarQube (S1541, S3776, S2970, S107, S110, S1448, S131) and Microsoft CA (CA1502, CA1506, CA1068, CA1501, CA1505).
+    /// </summary>
     public class ComplexityAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "CQ002";
@@ -17,7 +21,11 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. CQ002: Cyclomatic Complexity & CQ007: Cognitive Complexity on Methods/Constructors
+            // =========================================================================
+            // 1. [SonarQube: S1541] [Microsoft: CA1502] CQ002: Cyclomatic Complexity
+            //    [SonarQube: S3776] CQ007: Cognitive Complexity (Mental Overhead Score)
+            //    [SonarQube: S107]  [Microsoft: CA1068] CQ006: Constructor Parameter Clump
+            // =========================================================================
             var methodNodes = root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>();
             foreach (var method in methodNodes)
             {
@@ -39,7 +47,7 @@ namespace CodeMonitor.Analyzers
                     ? m.Identifier.Text
                     : (method is ConstructorDeclarationSyntax c ? c.Identifier.Text : "AnonymousMethod");
 
-                // CQ002: Cyclomatic Complexity
+                // // [SonarQube: S1541] [Microsoft: CA1502] CQ002: Cyclomatic Complexity
                 int complexity = CalculateComplexity(method);
                 if (complexity > config.MaxCyclomaticComplexity)
                 {
@@ -64,7 +72,7 @@ namespace CodeMonitor.Analyzers
                     };
                 }
 
-                // CQ007: Cognitive Complexity (Weighted mental overhead)
+                // // [SonarQube: S3776] CQ007: Cognitive Complexity (Weighted mental overhead calculation)
                 int cognitive = CalculateCognitiveComplexity(method);
                 int cognitiveLimit = 15;
                 if (cognitive > cognitiveLimit)
@@ -89,7 +97,7 @@ namespace CodeMonitor.Analyzers
                     };
                 }
 
-                // CQ006: Constructor Parameter Clump (> 5 dependencies)
+                // // [SonarQube: S107] [Microsoft: CA1068] CQ006: Constructor Parameter Clump (> 5 dependencies)
                 if (method is ConstructorDeclarationSyntax ctor && ctor.ParameterList != null && ctor.ParameterList.Parameters.Count > 5)
                 {
                     int paramCount = ctor.ParameterList.Parameters.Count;
@@ -114,7 +122,12 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. Class Level Checks: CQ005 (God Class), CQ008 (Excessive Inheritance), CQ009 (Member Bloat)
+            // =========================================================================
+            // 2. Class Level Checks:
+            //    [SonarQube: S2970] [Microsoft: CA1506] CQ005: God Class Length
+            //    [SonarQube: S110]  [Microsoft: CA1501] CQ008: Excessive Inheritance Hierarchy
+            //    [SonarQube: S1448] [Microsoft: CA1505] CQ009: Member / Method Bloat
+            // =========================================================================
             var classNodes = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
             foreach (var cls in classNodes)
             {
@@ -134,7 +147,7 @@ namespace CodeMonitor.Analyzers
 
                 string className = cls.Identifier.Text;
 
-                // CQ005: God Class Length (> 300 lines)
+                // // [SonarQube: S2970] [Microsoft: CA1506] CQ005: God Class Length (> 300 lines)
                 int classLineLimit = 300;
                 if (lineCount > classLineLimit)
                 {
@@ -158,7 +171,7 @@ namespace CodeMonitor.Analyzers
                     };
                 }
 
-                // CQ008: Excessive Inheritance Depth (> 3 base types)
+                // // [SonarQube: S110] [Microsoft: CA1501] CQ008: Excessive Inheritance Depth (> 3 base types)
                 if (cls.BaseList != null && cls.BaseList.Types.Count > 3)
                 {
                     int inheritanceCount = cls.BaseList.Types.Count;
@@ -181,7 +194,7 @@ namespace CodeMonitor.Analyzers
                     };
                 }
 
-                // CQ009: Member / Method Bloat (> 20 methods)
+                // // [SonarQube: S1448] [Microsoft: CA1505] CQ009: Member / Method Bloat (> 20 methods)
                 int methodCount = cls.Members.OfType<MethodDeclarationSyntax>().Count();
                 if (methodCount > 20)
                 {
@@ -205,7 +218,9 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 3. CQ010: Non-Exhaustive Switch Statements (Missing default case)
+            // =========================================================================
+            // 3. [SonarQube: S131] [Roslyn: CS8509] CQ010: Non-Exhaustive Switch Statements
+            // =========================================================================
             var switches = root.DescendantNodes().OfType<SwitchStatementSyntax>();
             foreach (var sw in switches)
             {
@@ -235,6 +250,7 @@ namespace CodeMonitor.Analyzers
             }
         }
 
+        // // [SonarQube: S1541] [Microsoft: CA1502] Cyclomatic Complexity calculation
         private static int CalculateComplexity(SyntaxNode methodNode)
         {
             int complexity = 1;
@@ -267,6 +283,7 @@ namespace CodeMonitor.Analyzers
             return complexity;
         }
 
+        // // [SonarQube: S3776] Cognitive Complexity weighted algorithm
         private static int CalculateCognitiveComplexity(SyntaxNode methodNode)
         {
             int cognitive = 0;

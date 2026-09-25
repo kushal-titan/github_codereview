@@ -7,6 +7,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CodeMonitor.Analyzers
 {
+    /// <summary>
+    /// Category 1: Structural Complexity
+    /// // [SonarQube: S138] Method Length Exceeded
+    /// </summary>
     public class MethodLengthAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "CQ001";
@@ -24,7 +28,6 @@ namespace CodeMonitor.Analyzers
                 int endLine = lineSpan.EndLinePosition.Line + 1;
                 int lineCount = (endLine - startLine) + 1;
 
-                // Check if this method is in the scope of modified lines (if git diff provided)
                 if (changedLines != null && changedLines.Count > 0)
                 {
                     bool isModified = Enumerable.Range(startLine, lineCount).Any(line => changedLines.Contains(line));
@@ -34,6 +37,7 @@ namespace CodeMonitor.Analyzers
                     }
                 }
 
+                // // [SonarQube: S138] Flag methods exceeding configured line threshold
                 if (lineCount > config.MaxMethodLines)
                 {
                     string methodName = method is MethodDeclarationSyntax m
