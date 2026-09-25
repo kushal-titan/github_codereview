@@ -13,7 +13,9 @@ TestResults/
 [Dd]ebug/
 [Rr]elease/
 
-# OS files
+# OS & Scratch artifacts
 .DS_Store
 Thumbs.db
 *.png
+*.pdf
+*.py
