@@ -9,6 +9,13 @@ on:
       - master
       - develop
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+  statuses: write
+
 jobs:
   code-quality-gate:
     name: "Roslyn AST Quality Analysis & Alerting"
@@ -17,8 +24,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      checks: write
       issues: write
+      checks: write
+      statuses: write
 
     steps:
       - name: 📥 Checkout Repository Code
@@ -54,6 +62,8 @@ jobs:
           echo "email=$AUTHOR_EMAIL" >> $GITHUB_OUTPUT
 
       - name: 🛡️ Run Quality Gate & AST Analyzer
+        id: run_analyzer
+        continue-on-error: true
         env:
           # Git context
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
@@ -80,98 +90,91 @@ jobs:
             --pr-url "$PR_URL" \
             --pr-author "$PR_AUTHOR_EMAIL"
 
-      - name: 💬 Post PR Comment & File GitHub Issue for Warnings
-        if: always()
+      - name: 💬 Post or Update PR Quality Comment
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
           script: |
             const fs = require('fs');
-
-            // 1. Post/Update Pull Request Review Comment (if PR event)
-            if (context.eventName === 'pull_request' && fs.existsSync('pr-comment.md')) {
+            if (fs.existsSync('pr-comment.md')) {
               const body = fs.readFileSync('pr-comment.md', 'utf8');
-              const { data: comments } = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-              });
-              
-              const botComment = comments.find(comment => 
-                comment.body.includes('Code Quality Gate:') || 
-                comment.body.includes('Code Quality Check:')
-              );
-              
-              if (botComment) {
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: botComment.id,
-                  body: body
-                });
-                console.log('Updated existing PR quality comment.');
-              } else {
-                await github.rest.issues.createComment({
+              try {
+                const { data: comments } = await github.rest.issues.listComments({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: context.issue.number,
-                  body: body
                 });
-                console.log('Created new PR quality comment.');
-              }
-            }
-
-            // 2. File a GitHub Issue under the repository Issues tab for Warnings (.md format with timestamp)
-            const warningsFile = 'issues/latest_warnings.md';
-            if (fs.existsSync(warningsFile)) {
-              const warningsBody = fs.readFileSync(warningsFile, 'utf8');
-              if (warningsBody.includes('Summary of Advisory Warnings')) {
-                const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-                const prSuffix = process.env.PR_NUMBER ? ` [PR #${process.env.PR_NUMBER}]` : ` [Branch: ${context.ref.replace('refs/heads/', '')}]`;
-                const issueTitle = `⚠️ Code Quality Advisory Warnings${prSuffix} - ${timestamp} UTC`;
-
-                try {
-                  const { data: existingIssues } = await github.rest.issues.listForRepo({
+                
+                const botComment = comments.find(comment => 
+                  comment.body.includes('Code Quality Gate:') || 
+                  comment.body.includes('Code Quality Check:')
+                );
+                
+                if (botComment) {
+                  await github.rest.issues.updateComment({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    state: 'open',
-                    labels: 'code-quality-advisory'
+                    comment_id: botComment.id,
+                    body: body
                   });
-
-                  const existingAdvisory = existingIssues.find(i => 
-                    process.env.PR_NUMBER ? i.title.includes(`PR #${process.env.PR_NUMBER}`) : i.title.includes(context.ref.replace('refs/heads/', ''))
-                  );
-
-                  if (existingAdvisory) {
-                    await github.rest.issues.update({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: existingAdvisory.number,
-                      title: issueTitle,
-                      body: warningsBody
-                    });
-                    console.log(`Updated open GitHub Issue #${existingAdvisory.number} with latest warnings.`);
-                  } else {
-                    const { data: newIssue } = await github.rest.issues.create({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      title: issueTitle,
-                      body: warningsBody,
-                      labels: ['code-quality', 'code-quality-advisory', 'warnings']
-                    });
-                    console.log(`Successfully created GitHub Issue #${newIssue.number}: ${newIssue.html_url}`);
-                  }
-                } catch (issueErr) {
-                  console.log(`Note: Could not file GitHub Issue (${issueErr.message}). Report is saved in repository issues/ folder.`);
+                  console.log('✅ Updated existing PR quality comment.');
+                } else {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: context.issue.number,
+                    body: body
+                  });
+                  console.log('✅ Created new PR quality comment.');
                 }
+              } catch (err) {
+                console.log('⚠️ Could not post PR comment:', err.message);
               }
             }
 
-      - name: 📦 Archive Warnings Report (.md)
+      - name: 📋 File GitHub Issue for Advisory Warnings
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "Checking for warnings report..."
+          if [ -f "issues/latest_warnings.md" ]; then
+            echo "Found issues/latest_warnings.md"
+            cat issues/latest_warnings.md | head -n 25
+            
+            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            if [ -n "$PR_NUMBER" ]; then
+              TITLE="⚠️ Code Quality Advisory Warnings [PR #${PR_NUMBER}] - ${TIMESTAMP}"
+            else
+              TITLE="⚠️ Code Quality Advisory Warnings - ${TIMESTAMP}"
+            fi
+            
+            echo "Filing GitHub Issue with title: $TITLE"
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "$TITLE" \
+              --body-file "issues/latest_warnings.md" || {
+                echo "gh issue create failed, checking error..."
+              }
+          else
+            echo "No advisory warnings file generated (0 warnings in this analysis run)."
+          fi
+
+      - name: 📦 Archive Warnings Report Artifacts (.md)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: code-quality-warnings-report
           path: issues/
           if-no-files-found: ignore
+
+      - name: 🚨 Evaluate Quality Gate Result
+        if: always()
+        run: |
+          if [ "${{ steps.run_analyzer.outcome }}" != "success" ]; then
+            echo "❌ Quality Gate failed due to critical code quality violations."
+            exit 1
+          else
+            echo "✅ Quality Gate passed."
+          fi
