@@ -1,6 +1,6 @@
 # ⚠️ Code Quality Warnings & Advisories Report
 
-> **Generated:** `2026-09-25 12:20:26 UTC`  
+> **Generated:** `2026-09-25 12:20:26 PM IST` (`06:50:26 UTC`)  
 > **Repository:** `kushal-titan/github_codereview`  
 > **Branch:** `kushal-titan-patch-13` | **Commit:** `4448a96`  
 > **Author:** `kushal-titan <kushalsa@titan.co.in>`  

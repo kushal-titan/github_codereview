@@ -199,7 +199,9 @@ namespace CodeMonitor.Services
             // Quick Details Summary
             sb.AppendLine("<div class='summary-box'>");
             sb.AppendLine($"<b>Repository:</b> <code>{report.Repository}</code> &bull; <b>Branch:</b> <code>{report.Branch}</code><br/>");
-            sb.AppendLine($"<b>Commit:</b> <code>{report.CommitSha}</code> &bull; <b>Files Analyzed:</b> {report.AnalyzedFiles.Count}");
+            sb.AppendLine($"<b>Commit:</b> <code>{report.CommitSha}</code> &bull; <b>Files Analyzed:</b> {report.AnalyzedFiles.Count}<br/>");
+            DateTime istTime = GitHubReporter.GetIndianStandardTime(report.AnalysisTime);
+            sb.AppendLine($"<b>Analysis Timestamp:</b> <code>{istTime:dd-MMM-yyyy hh:mm:ss tt} IST</code>");
             if (!string.IsNullOrWhiteSpace(additionalRecipients))
             {
                 sb.AppendLine($"<br/><b>CC (Lead / Reviewers):</b> <code>{HttpUtility.HtmlEncode(additionalRecipients)}</code>");

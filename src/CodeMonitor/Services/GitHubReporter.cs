@@ -88,6 +88,20 @@ namespace CodeMonitor.Services
             Console.WriteLine("\n======================================================================");
         }
 
+        public static DateTime GetIndianStandardTime(DateTime utcTime)
+        {
+            try
+            {
+                string tzId = OperatingSystem.IsWindows() ? "India Standard Time" : "Asia/Kolkata";
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                return TimeZoneInfo.ConvertTimeFromUtc(utcTime, tz);
+            }
+            catch
+            {
+                return utcTime.AddHours(5).AddMinutes(30);
+            }
+        }
+
         public string? WriteWarningsMarkdownReport(AnalysisReport report, string workingDirectory, QualityConfig config)
         {
             if (!config.SaveWarningsToMarkdown)
@@ -104,8 +118,9 @@ namespace CodeMonitor.Services
                     Directory.CreateDirectory(warningsDir);
                 }
 
-                string timestamp = report.AnalysisTime.ToString("yyyy-MM-dd_HH-mm-ss");
-                string fileName = $"warnings_{timestamp}.md";
+                DateTime istTime = GetIndianStandardTime(report.AnalysisTime);
+                string timestamp = istTime.ToString("yyyy-MM-dd_HH-mm-ss");
+                string fileName = $"warnings_{timestamp}_IST.md";
                 string fullFilePath = Path.Combine(warningsDir, fileName);
                 string latestFilePath = Path.Combine(warningsDir, "latest_warnings.md");
 
@@ -115,7 +130,7 @@ namespace CodeMonitor.Services
                     sb.AppendLine("# 🛡️ Code Quality Warnings & Advisories Report");
                     sb.AppendLine();
                     sb.AppendLine($"> **Status:** ✅ **0 Advisory Warnings Found**  ");
-                    sb.AppendLine($"> **Generated:** `{report.AnalysisTime:yyyy-MM-dd HH:mm:ss} UTC`  ");
+                    sb.AppendLine($"> **Generated:** `{istTime:yyyy-MM-dd hh:mm:ss tt} IST` (`{report.AnalysisTime:HH:mm:ss} UTC`)  ");
                     sb.AppendLine($"> **Repository:** `{report.Repository}`  ");
                     sb.AppendLine($"> **Branch:** `{report.Branch}` | **Commit:** `{report.CommitSha}`  ");
                     sb.AppendLine($"> **Author:** `{report.AuthorName}` `{(!string.IsNullOrWhiteSpace(report.AuthorEmail) ? $"<{report.AuthorEmail}>" : "")}`  ");
@@ -134,7 +149,7 @@ namespace CodeMonitor.Services
                 {
                     sb.AppendLine("# ⚠️ Code Quality Warnings & Advisories Report");
                     sb.AppendLine();
-                    sb.AppendLine($"> **Generated:** `{report.AnalysisTime:yyyy-MM-dd HH:mm:ss} UTC`  ");
+                    sb.AppendLine($"> **Generated:** `{istTime:yyyy-MM-dd hh:mm:ss tt} IST` (`{report.AnalysisTime:HH:mm:ss} UTC`)  ");
                     sb.AppendLine($"> **Repository:** `{report.Repository}`  ");
                     sb.AppendLine($"> **Branch:** `{report.Branch}` | **Commit:** `{report.CommitSha}`  ");
                     sb.AppendLine($"> **Author:** `{report.AuthorName}` `{(!string.IsNullOrWhiteSpace(report.AuthorEmail) ? $"<{report.AuthorEmail}>" : "")}`  ");
@@ -266,15 +281,18 @@ namespace CodeMonitor.Services
                 sb.AppendLine("- **Status:** Ready for peer review and merge ✅");
                 sb.AppendLine($"- **Files Analyzed:** `{report.AnalyzedFiles.Count}` file(s)");
                 sb.AppendLine($"- **Commit:** `{report.CommitSha}`");
+                sb.AppendLine($"- **Analysis Time:** `{GetIndianStandardTime(report.AnalysisTime):yyyy-MM-dd hh:mm:ss tt} IST`");
                 return sb.ToString();
             }
 
+            DateTime summaryIstTime = GetIndianStandardTime(report.AnalysisTime);
             if (report.ErrorCount == 0 && report.WarningCount > 0)
             {
                 sb.AppendLine("## ⚠️ Code Quality Gate: **PASSED WITH ADVISORIES**");
                 sb.AppendLine();
                 sb.AppendLine($"> [!NOTE]");
                 sb.AppendLine($"> Quality gate passed with **{report.WarningCount} advisory warning(s)**. Detailed warning blueprints have been archived under `issues/`.");
+                sb.AppendLine($"> **Analysis Time:** `{summaryIstTime:yyyy-MM-dd hh:mm:ss tt} IST`");
             }
             else
             {
@@ -282,6 +300,7 @@ namespace CodeMonitor.Services
                 sb.AppendLine();
                 sb.AppendLine($"> [!WARNING]");
                 sb.AppendLine($"> Found **{report.ErrorCount} error(s)** and **{report.WarningCount} warning(s)** in your changes. Please resolve the critical errors before merging.");
+                sb.AppendLine($"> **Analysis Time:** `{summaryIstTime:yyyy-MM-dd hh:mm:ss tt} IST`");
             }
 
             sb.AppendLine();

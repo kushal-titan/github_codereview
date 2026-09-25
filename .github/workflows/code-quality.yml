@@ -144,7 +144,7 @@ jobs:
             echo "Found issues/latest_warnings.md"
             cat issues/latest_warnings.md | head -n 25
             
-            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            TIMESTAMP=$(TZ="Asia/Kolkata" date +"%Y-%m-%d %I:%M:%S %p IST")
             if [ -n "$PR_NUMBER" ]; then
               TITLE="⚠️ Code Quality Advisory Warnings [PR #${PR_NUMBER}] - ${TIMESTAMP}"
             else
