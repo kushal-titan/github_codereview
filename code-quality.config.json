@@ -5,8 +5,8 @@
   "maxNestingDepth": 3,
   "failOnErrors": true,
   "showcaseOnlyErrorsInConsole": true,
-  "saveWarningsToMarkdown": true,
-  "warningsDirectory": "issues",
+  "saveErrorsToMarkdown": true,
+  "errorsDirectory": "issues",
   "additionalRecipients": [
     "nithishsadayappan@titan.co.in"
   ]

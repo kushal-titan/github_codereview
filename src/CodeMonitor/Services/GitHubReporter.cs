@@ -8,7 +8,7 @@ namespace CodeMonitor.Services
 {
     public class GitHubReporter
     {
-        public void EmitWorkflowAnnotations(AnalysisReport report, string workingDirectory, QualityConfig? config = null, string? warningsReportRelPath = null)
+        public void EmitWorkflowAnnotations(AnalysisReport report, string workingDirectory, QualityConfig? config = null, string? errorReportRelPath = null)
         {
             config ??= new QualityConfig();
             Console.WriteLine("\n======================================================================");
@@ -28,18 +28,18 @@ namespace CodeMonitor.Services
             {
                 Console.WriteLine($"🛡️  CODE QUALITY GATE: PASSED WITH ADVISORIES ⚠️ (0 Errors, {report.WarningCount} Warning(s))");
                 Console.WriteLine("======================================================================");
-                Console.WriteLine("No blocking errors detected in changed files.");
-                if (!string.IsNullOrWhiteSpace(warningsReportRelPath))
-                {
-                    Console.WriteLine($"\n📋 Advisory Warnings ({report.WarningCount}) have been archived to Markdown report:");
-                    Console.WriteLine($"   📄 {warningsReportRelPath}");
-                    Console.WriteLine($"   📌 Stored under the '{config.WarningsDirectory}' folder and recorded as GitHub Issue.");
-                }
+                Console.WriteLine("No blocking errors detected in changed files. Merge is allowed.");
             }
             else
             {
                 Console.WriteLine($"🛡️  CODE QUALITY GATE: ACTION REQUIRED (❌ {report.ErrorCount} Error(s), ⚠️ {report.WarningCount} Warning(s))");
                 Console.WriteLine("======================================================================");
+                if (!string.IsNullOrWhiteSpace(errorReportRelPath))
+                {
+                    Console.WriteLine($"\n🚨 Critical Blocking Errors ({report.ErrorCount}) have been recorded for GitHub Issues:");
+                    Console.WriteLine($"   📄 {errorReportRelPath}");
+                    Console.WriteLine($"   📌 Stored under the '{config.ErrorsDirectory}' folder.");
+                }
             }
 
             // Determine which violations to print to the console
@@ -78,10 +78,6 @@ namespace CodeMonitor.Services
             {
                 Console.WriteLine("\n--------------------------------------------------");
                 Console.WriteLine($"ℹ️  Notice: {report.WarningCount} advisory warning(s) were also identified.");
-                if (!string.IsNullOrWhiteSpace(warningsReportRelPath))
-                {
-                    Console.WriteLine($"   Full warnings report & remediation blueprints stored in: {warningsReportRelPath}");
-                }
                 Console.WriteLine("--------------------------------------------------");
             }
 
@@ -102,34 +98,34 @@ namespace CodeMonitor.Services
             }
         }
 
-        public string? WriteWarningsMarkdownReport(AnalysisReport report, string workingDirectory, QualityConfig config)
+        public string? WriteErrorsMarkdownReport(AnalysisReport report, string workingDirectory, QualityConfig config)
         {
-            if (!config.SaveWarningsToMarkdown)
+            if (!config.SaveErrorsToMarkdown)
             {
                 return null;
             }
 
             try
             {
-                string targetDirName = !string.IsNullOrWhiteSpace(config.WarningsDirectory) ? config.WarningsDirectory : "issues";
-                string warningsDir = Path.Combine(workingDirectory, targetDirName);
-                if (!Directory.Exists(warningsDir))
+                string targetDirName = !string.IsNullOrWhiteSpace(config.ErrorsDirectory) ? config.ErrorsDirectory : "issues";
+                string issuesDir = Path.Combine(workingDirectory, targetDirName);
+                if (!Directory.Exists(issuesDir))
                 {
-                    Directory.CreateDirectory(warningsDir);
+                    Directory.CreateDirectory(issuesDir);
                 }
 
                 DateTime istTime = GetIndianStandardTime(report.AnalysisTime);
                 string timestamp = istTime.ToString("yyyy-MM-dd_HH-mm-ss");
-                string fileName = $"warnings_{timestamp}_IST.md";
-                string fullFilePath = Path.Combine(warningsDir, fileName);
-                string latestFilePath = Path.Combine(warningsDir, "latest_warnings.md");
+                string fileName = $"errors_{timestamp}_IST.md";
+                string fullFilePath = Path.Combine(issuesDir, fileName);
+                string latestFilePath = Path.Combine(issuesDir, "latest_errors.md");
 
                 var sb = new StringBuilder();
-                if (report.WarningCount == 0)
+                if (report.ErrorCount == 0)
                 {
-                    sb.AppendLine("# 🛡️ Code Quality Warnings & Advisories Report");
+                    sb.AppendLine("# 🛡️ Code Quality Critical Errors Report");
                     sb.AppendLine();
-                    sb.AppendLine($"> **Status:** ✅ **0 Advisory Warnings Found**  ");
+                    sb.AppendLine($"> **Status:** ✅ **0 Critical Blocking Errors Found**  ");
                     sb.AppendLine($"> **Generated:** `{istTime:yyyy-MM-dd hh:mm:ss tt} IST` (`{report.AnalysisTime:HH:mm:ss} UTC`)  ");
                     sb.AppendLine($"> **Repository:** `{report.Repository}`  ");
                     sb.AppendLine($"> **Branch:** `{report.Branch}` | **Commit:** `{report.CommitSha}`  ");
@@ -141,14 +137,15 @@ namespace CodeMonitor.Services
                     sb.AppendLine();
                     sb.AppendLine("---");
                     sb.AppendLine();
-                    sb.AppendLine("### ✅ All Checks Passed With Zero Warnings");
+                    sb.AppendLine("### ✅ All Checks Passed With Zero Blocking Errors");
                     sb.AppendLine();
-                    sb.AppendLine("No code smells, cognitive complexity issues, or naming standard advisories were found in the analyzed changes.");
+                    sb.AppendLine("No runtime safety traps, concurrency deadlocks, or critical vulnerabilities were found in the analyzed changes.");
                 }
                 else
                 {
-                    sb.AppendLine("# ⚠️ Code Quality Warnings & Advisories Report");
+                    sb.AppendLine("# ❌ Code Quality Critical Blocking Errors Report");
                     sb.AppendLine();
+                    sb.AppendLine($"> **Status:** 🚨 **Action Required &mdash; {report.ErrorCount} Blocking Error(s)**  ");
                     sb.AppendLine($"> **Generated:** `{istTime:yyyy-MM-dd hh:mm:ss tt} IST` (`{report.AnalysisTime:HH:mm:ss} UTC`)  ");
                     sb.AppendLine($"> **Repository:** `{report.Repository}`  ");
                     sb.AppendLine($"> **Branch:** `{report.Branch}` | **Commit:** `{report.CommitSha}`  ");
@@ -160,61 +157,61 @@ namespace CodeMonitor.Services
                     sb.AppendLine();
                     sb.AppendLine("---");
                     sb.AppendLine();
-                    sb.AppendLine($"## 📊 Summary of Advisory Warnings ({report.WarningCount})");
+                    sb.AppendLine($"## 🚨 Summary of Critical Blocking Errors ({report.ErrorCount})");
                     sb.AppendLine();
                     sb.AppendLine("| Severity | Rule ID | Category | Location | Target | Actual vs Limit | Recommended Remediation |");
                     sb.AppendLine("| :---: | :--- | :--- | :--- | :--- | :---: | :--- |");
 
-                    var warnings = report.Violations.Where(v => v.Severity == ViolationSeverity.Warning).ToList();
-                    foreach (var v in warnings)
+                    var errors = report.Violations.Where(v => v.Severity == ViolationSeverity.Error).ToList();
+                    foreach (var v in errors)
                     {
                         string relPath = GetRelativePath(v.TargetFile, workingDirectory);
                         string location = $"`{relPath}:{v.LineNumber}`";
-                        string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Advisory";
+                        string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Critical Error";
                         string category = v.Category.ToString();
 
-                        sb.AppendLine($"| ⚠️ **Warning** | `{v.RuleId}` {v.RuleName} | {category} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
+                        sb.AppendLine($"| ❌ **Error** | `{v.RuleId}` {v.RuleName} | {category} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
                     }
-                }
 
-                // Remediation blueprints for warnings
-                var detailedWarnings = warnings.Where(v => v.ActionSteps.Count > 0 || !string.IsNullOrWhiteSpace(v.CodeExample)).ToList();
-                if (detailedWarnings.Count > 0)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine("---");
-                    sb.AppendLine();
-                    sb.AppendLine("## 🛠️ Detailed Remediation Blueprints");
-                    sb.AppendLine();
-
-                    foreach (var v in detailedWarnings)
+                    // Remediation blueprints for errors
+                    var detailedErrors = errors.Where(v => v.ActionSteps.Count > 0 || !string.IsNullOrWhiteSpace(v.CodeExample)).ToList();
+                    if (detailedErrors.Count > 0)
                     {
-                        string relPath = GetRelativePath(v.TargetFile, workingDirectory);
-                        sb.AppendLine($"<details>");
-                        sb.AppendLine($"<summary><b>⚠️ [{v.RuleId}] {v.RuleName} &mdash; <code>{relPath}:{v.LineNumber}</code></b></summary>");
                         sb.AppendLine();
-                        sb.AppendLine($"- **Problem:** {v.Description}");
-                        if (!string.IsNullOrWhiteSpace(v.Rationale))
+                        sb.AppendLine("---");
+                        sb.AppendLine();
+                        sb.AppendLine("## 🛠️ Detailed Remediation & Refactoring Blueprints");
+                        sb.AppendLine();
+
+                        foreach (var v in detailedErrors)
                         {
-                            sb.AppendLine($"- **Why it matters:** {v.Rationale}");
-                        }
-                        if (v.ActionSteps.Count > 0)
-                        {
-                            sb.AppendLine("- **Action Steps:**");
-                            foreach (var step in v.ActionSteps)
-                            {
-                                sb.AppendLine($"  1. {step}");
-                            }
-                        }
-                        if (!string.IsNullOrWhiteSpace(v.CodeExample))
-                        {
+                            string relPath = GetRelativePath(v.TargetFile, workingDirectory);
+                            sb.AppendLine($"<details>");
+                            sb.AppendLine($"<summary><b>❌ [{v.RuleId}] {v.RuleName} &mdash; <code>{relPath}:{v.LineNumber}</code></b></summary>");
                             sb.AppendLine();
-                            sb.AppendLine("```csharp");
-                            sb.AppendLine(v.CodeExample);
-                            sb.AppendLine("```");
+                            sb.AppendLine($"- **Problem:** {v.Description}");
+                            if (!string.IsNullOrWhiteSpace(v.Rationale))
+                            {
+                                sb.AppendLine($"- **Why it matters:** {v.Rationale}");
+                            }
+                            if (v.ActionSteps.Count > 0)
+                            {
+                                sb.AppendLine("- **Action Steps:**");
+                                foreach (var step in v.ActionSteps)
+                                {
+                                    sb.AppendLine($"  1. {step}");
+                                }
+                            }
+                            if (!string.IsNullOrWhiteSpace(v.CodeExample))
+                            {
+                                sb.AppendLine();
+                                sb.AppendLine("```csharp");
+                                sb.AppendLine(v.CodeExample);
+                                sb.AppendLine("```");
+                            }
+                            sb.AppendLine("</details>");
+                            sb.AppendLine();
                         }
-                        sb.AppendLine("</details>");
-                        sb.AppendLine();
                     }
                 }
 
@@ -226,12 +223,12 @@ namespace CodeMonitor.Services
                 File.WriteAllText(latestFilePath, markdownContent);
 
                 string relativePath = Path.Combine(targetDirName, fileName).Replace('\\', '/');
-                Console.WriteLine($"[GitHubReporter] 📝 Timestamped warnings report saved to: {relativePath}");
+                Console.WriteLine($"[GitHubReporter] 📝 Timestamped error report saved to: {relativePath}");
                 return relativePath;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[GitHubReporter] ⚠️ Error writing warnings markdown report: {ex.Message}");
+                Console.WriteLine($"[GitHubReporter] ⚠️ Error writing error markdown report: {ex.Message}");
                 return null;
             }
         }

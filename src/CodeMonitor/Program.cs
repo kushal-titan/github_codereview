@@ -116,8 +116,8 @@ namespace CodeMonitor
             Console.WriteLine($"Analysis Finished: {report.ErrorCount} Error(s), {report.WarningCount} Warning(s)");
             Console.WriteLine("--------------------------------------------------");
 
-            string? warningsReportRelPath = githubReporter.WriteWarningsMarkdownReport(report, targetDir, config);
-            githubReporter.EmitWorkflowAnnotations(report, targetDir, config, warningsReportRelPath);
+            string? errorReportRelPath = githubReporter.WriteErrorsMarkdownReport(report, targetDir, config);
+            githubReporter.EmitWorkflowAnnotations(report, targetDir, config, errorReportRelPath);
             githubReporter.WriteJobSummary(report, targetDir);
 
             // 4. Dispatch Email Report via Outlook SMTP directly to PR Author

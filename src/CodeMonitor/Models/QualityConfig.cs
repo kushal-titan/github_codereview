@@ -13,6 +13,8 @@ namespace CodeMonitor.Models
         public int MaxNestingDepth { get; set; } = 3;
         public bool FailOnErrors { get; set; } = true;
         public bool ShowcaseOnlyErrorsInConsole { get; set; } = true;
+        public bool SaveErrorsToMarkdown { get; set; } = true;
+        public string ErrorsDirectory { get; set; } = "issues";
         public bool SaveWarningsToMarkdown { get; set; } = true;
         public string WarningsDirectory { get; set; } = "issues";
         public bool SendEmailNotification { get; set; } = true;
