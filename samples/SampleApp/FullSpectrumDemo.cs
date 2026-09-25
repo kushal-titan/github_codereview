@@ -13,7 +13,7 @@ namespace DivisionByZeroSample
 
             
             int result1 = a / b;
-            Console.WriteLine(result1);
+            Console.WriteLine(result1);   //hello//
 
             CalculateAverage();
             CalculatePercentage();
