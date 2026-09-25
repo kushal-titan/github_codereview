@@ -111,12 +111,13 @@ namespace CodeMonitor
                 }
             }
 
-            // 3. Output GitHub workflow annotations & Step Summary
+            // 3. Output GitHub workflow annotations, Step Summary & Warnings Markdown Report
             Console.WriteLine("\n--------------------------------------------------");
             Console.WriteLine($"Analysis Finished: {report.ErrorCount} Error(s), {report.WarningCount} Warning(s)");
             Console.WriteLine("--------------------------------------------------");
 
-            githubReporter.EmitWorkflowAnnotations(report, targetDir);
+            string? warningsReportRelPath = githubReporter.WriteWarningsMarkdownReport(report, targetDir, config);
+            githubReporter.EmitWorkflowAnnotations(report, targetDir, config, warningsReportRelPath);
             githubReporter.WriteJobSummary(report, targetDir);
 
             // 4. Dispatch Email Report via Outlook SMTP directly to PR Author

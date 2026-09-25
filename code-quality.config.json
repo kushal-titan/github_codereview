@@ -4,6 +4,9 @@
   "maxParameterCount": 4,
   "maxNestingDepth": 3,
   "failOnErrors": true,
+  "showcaseOnlyErrorsInConsole": true,
+  "saveWarningsToMarkdown": true,
+  "warningsDirectory": "issues",
   "additionalRecipients": [
     "nithishsadayappan@titan.co.in"
   ]

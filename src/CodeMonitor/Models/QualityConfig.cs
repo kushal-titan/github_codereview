@@ -12,6 +12,9 @@ namespace CodeMonitor.Models
         public int MaxParameterCount { get; set; } = 4;
         public int MaxNestingDepth { get; set; } = 3;
         public bool FailOnErrors { get; set; } = true;
+        public bool ShowcaseOnlyErrorsInConsole { get; set; } = true;
+        public bool SaveWarningsToMarkdown { get; set; } = true;
+        public string WarningsDirectory { get; set; } = "issues";
         public bool SendEmailNotification { get; set; } = true;
         public string EmailSubjectPrefix { get; set; } = "[Code Quality Monitor]";
         public List<string> AdditionalRecipients { get; set; } = new List<string>();
