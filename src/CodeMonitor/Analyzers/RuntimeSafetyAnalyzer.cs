@@ -242,7 +242,34 @@ namespace CodeMonitor.Analyzers
                                 CodeExample = example
                             };
                         }
-                        break; // Only report the first unreachable statement in the sequence
+                        break;
+                    }
+                }
+            }
+
+            // 7. SAF007: Generic Exception Throw
+            foreach (var throwStmt in root.DescendantNodes().OfType<ThrowStatementSyntax>())
+            {
+                if (throwStmt.Expression is ObjectCreationExpressionSyntax creation && creation.Type.ToString() == "Exception")
+                {
+                    int line = throwStmt.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetGenericExceptionAdvice(throwStmt.ToString());
+                        yield return new Violation
+                        {
+                            RuleId = "SAF007",
+                            RuleName = "Generic Exception Throw",
+                            TargetFile = filePath,
+                            MemberName = throwStmt.ToString(),
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = "Throwing generic 'System.Exception' is discouraged. Use specific semantic exception types.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
                     }
                 }
             }

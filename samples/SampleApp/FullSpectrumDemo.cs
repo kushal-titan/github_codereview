@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace SampleApp
 {
     // =========================================================================
-    // Category 6: Architecture & Standards (ARCH001, ARCH003, ARCH004, ARCH005)
+    // Category 6: Architecture & Standards (ARCH001, ARCH003, ARCH004, ARCH005, ARCH007, ARCH008)
     // =========================================================================
 
     // ARCH001: Interface missing 'I' prefix
@@ -30,10 +30,19 @@ namespace SampleApp
         private static readonly object _lockA = new object();
         private static readonly object _lockB = new object();
 
+        // ARCH008: Private field PascalCase naming
+        private List<string> ItemsList = new List<string>();
+
         // ARCH002: Async method missing 'Async' suffix
         public async Task FetchRemoteData()
         {
             await Task.Delay(10);
+        }
+
+        // ARCH007: Method missing PascalCase (starts with lowercase)
+        public void printEmployeeInfo()
+        {
+            Console.WriteLine("Printing employee details");
         }
 
         // =========================================================================
@@ -60,7 +69,7 @@ namespace SampleApp
         }
 
         // =========================================================================
-        // Category 2: Runtime Safety & Bugs (SAF001 - SAF006)
+        // Category 2: Runtime Safety & Bugs (SAF001 - SAF007)
         // =========================================================================
 
         public void RuntimeSafetyDemonstration(Order order, int[] numbers)
@@ -94,6 +103,12 @@ namespace SampleApp
             }
             catch (FormatException)
             {
+            }
+
+            // SAF007: Generic exception throw
+            if (item_count < 0)
+            {
+                throw new Exception("Invalid item count");
             }
 
             // SAF006: Unreachable dead code

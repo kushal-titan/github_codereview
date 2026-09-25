@@ -9,12 +9,6 @@ from reportlab.platypus import (
 from reportlab.pdfgen import canvas
 
 class SphinxReadTheDocsCanvas(canvas.Canvas):
-    """
-    Two-pass canvas matching the classic Sphinx / ReadTheDocs LaTeX PDF style:
-    - Cover / Page 1 top blue header bar
-    - Running Header on subsequent pages
-    - Running Footer with 'Page X of Y' on all pages
-    """
     def __init__(self, *args, **kwargs):
         super(SphinxReadTheDocsCanvas, self).__init__(*args, **kwargs)
         self._saved_page_states = []
@@ -226,8 +220,8 @@ def build_rtd_pdf(filename):
         'TableCell_Sphinx',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=6.7,
-        leading=8.6,
+        fontSize=6.5,
+        leading=8.3,
         textColor=colors.HexColor("#2c3e50")
     )
 
@@ -235,16 +229,14 @@ def build_rtd_pdf(filename):
         'TableHeader_Sphinx',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=7.0,
-        leading=9.0,
+        fontSize=6.8,
+        leading=8.8,
         textColor=colors.HexColor("#ffffff")
     )
 
     story = []
 
-    # ==========================================
-    # PAGE 1: OVERVIEW, WORKFLOW & EXPANDED DIRECTORY ARCHITECTURE
-    # ==========================================
+    # PAGE 1: OVERVIEW & ARCHITECTURE
     story.append(Paragraph("TECHNICAL DOCUMENTATION MANUAL", cover_pretitle))
     story.append(Paragraph("Automated .NET Code Quality Monitor", cover_title))
     story.append(Paragraph("Complete 6-Category Roslyn Analysis Spectrum & Enterprise Quality Gate", cover_subtitle))
@@ -253,7 +245,7 @@ def build_rtd_pdf(filename):
         [
             Paragraph("<b>Release:</b> 1.0.0 (Production)", table_cell),
             Paragraph("<b>Runtime Platform:</b> .NET 8.0 SDK (C# 12)", table_cell),
-            Paragraph("<b>Analysis Engine:</b> Roslyn AST (26 Rules)", table_cell),
+            Paragraph("<b>Analysis Engine:</b> Roslyn AST (29 Rules)", table_cell),
             Paragraph("<b>CI/CD:</b> Native GitHub Actions", table_cell)
         ]
     ]
@@ -269,25 +261,15 @@ def build_rtd_pdf(filename):
     story.append(t_meta)
     story.append(Spacer(1, 3))
 
-    # Section 1: Project Overview & Objectives
     story.append(Paragraph("1. Project Overview & Objectives", h1_style))
     story.append(Paragraph(
-        "<b>1.1 Purpose & Problem Statement:</b> The <b>Automated .NET Code Quality Monitor</b> enforces deep architectural, "
+        "<b>1.1 Purpose:</b> The <b>Automated .NET Code Quality Monitor</b> enforces deep architectural, "
         "safety, and security standards natively in GitHub Pull Requests. It analyzes every modified C# line using Microsoft Roslyn AST "
         "compilers across all 6 core categories of the <b>Roslyn Analysis Spectrum</b>.",
         body_style
     ))
-    story.append(Paragraph(
-        "<b>1.2 Core Architectural Principles:</b> Built on four pillars: "
-        "<b>(1) Zero SaaS Costs</b> - runs 100% inside GitHub Actions runners; "
-        "<b>(2) Roslyn AST Precision</b> - parses true syntax trees instead of regex; "
-        "<b>(3) Incremental PR Scoping</b> - evaluates only modified lines; "
-        "<b>(4) Actionable Guidance</b> - provides rationale, step-by-step checklists, and Before/After code blueprints.",
-        body_style
-    ))
     story.append(Spacer(1, 2.5))
 
-    # Section 2: System Architecture & End-to-End Workflow
     story.append(Paragraph("2. System Architecture & End-to-End Workflow", h1_style))
     workflow_stages = [
         [
@@ -310,8 +292,8 @@ def build_rtd_pdf(filename):
         ],
         [
             Paragraph("<b>3. Roslyn AST</b>", table_cell),
-            Paragraph("6 Spectrum Analyzers", table_cell),
-            Paragraph("Parses C# AST nodes across 26 rules (Complexity, Safety, Async, Security, Performance, Standards).", table_cell),
+            Paragraph("Spectrum Analyzers", table_cell),
+            Paragraph("Parses C# AST nodes across all rules (Complexity, Safety, Async, Security, Performance, Standards).", table_cell),
             Paragraph("Structured <code>AnalysisReport</code>", table_cell)
         ],
         [
@@ -340,35 +322,30 @@ def build_rtd_pdf(filename):
     story.append(t_workflow)
     story.append(Spacer(1, 2.5))
 
-    # Codebase Structure
     story.append(Paragraph("3. Codebase Structure & Analyzers", h1_style))
     codebase_tree = """src/
 |-- CodeMonitor/
-|   |-- Analyzers/                       # 6 Core Roslyn Spectrum Analyzers
+|   |-- Analyzers/                       # Core Roslyn Spectrum Analyzers
 |   |   |-- ICodeAnalyzer.cs             # Common interface contract
-|   |   |-- MethodLengthAnalyzer.cs      # CQ001: Method lines of code (>50 lines)
-|   |   |-- ComplexityAnalyzer.cs        # CQ002: McCabe cyclomatic complexity (>10)
+|   |   |-- MethodLengthAnalyzer.cs      # CQ001: Method lines (>50 lines)
+|   |   |-- ComplexityAnalyzer.cs        # CQ002: Cyclomatic complexity (>10)
 |   |   |-- ParameterCountAnalyzer.cs    # CQ003: Parameter count (>4 params)
-|   |   |-- NestingDepthAnalyzer.cs      # CQ004: Statement nesting depth (>3 levels)
-|   |   |-- RuntimeSafetyAnalyzer.cs     # SAF001-SAF006: Nulls, zero-div, leaks, bounds, dead code
-|   |   |-- ConcurrencyAnalyzer.cs       # CON001-CON005: Deadlocks, async void, sync-over-async
+|   |   |-- NestingDepthAnalyzer.cs      # CQ004: Nesting depth (>3 levels)
+|   |   |-- RuntimeSafetyAnalyzer.cs     # SAF001-SAF007: Nulls, zero-div, leaks, bounds, dead code, generic throws
+|   |   |-- ConcurrencyAnalyzer.cs       # CON001-CON005: Deadlocks, async void, sync-over-async, unsafe locks
 |   |   |-- SecurityAnalyzer.cs          # SEC001-SEC004: SQL injection, hardcoded secrets, weak crypto, XSS
 |   |   |-- PerformanceAnalyzer.cs       # PERF001-PERF003: String loops, boxing, LINQ Count()
-|   |   \\-- ArchitectureAnalyzer.cs      # ARCH001-ARCH006: Naming conventions & obsolete APIs
-|   |-- Knowledge/RecommendationEngine.cs# Refactoring blueprints for all 26 rules
+|   |   \\-- ArchitectureAnalyzer.cs      # ARCH001-ARCH008: PascalCase types/methods/props, camelCase vars, field casing
+|   |-- Knowledge/RecommendationEngine.cs# Refactoring blueprints for all rules
 |   |-- Services/                        # GitDiffService, GitHubReporter, EmailService
 |   \\-- Program.cs                       # CLI entrypoint and Quality Gate evaluator"""
     story.append(create_code_block(codebase_tree, "Repository Architecture & Complete Directory Tree", width=532))
 
-    # ==========================================
     # PAGE BREAK TO PAGE 2
-    # ==========================================
     story.append(PageBreak())
 
-    # ==========================================
-    # PAGE 2: COMPLETE 6-CATEGORY ROSLYN SPECTRUM SPECIFICATION
-    # ==========================================
-    story.append(Paragraph("4. Complete 6-Category Roslyn Spectrum Rule Catalog (26 Rules)", h1_style))
+    # PAGE 2: COMPLETE ROSLYN SPECTRUM SPECIFICATION
+    story.append(Paragraph("4. Complete Roslyn Spectrum Rule Catalog", h1_style))
     story.append(Paragraph(
         "Every rule is statically verified against Roslyn AST syntax nodes and enriched with step-by-step remediation blueprints:",
         body_style
@@ -453,6 +430,13 @@ def build_rtd_pdf(filename):
             Paragraph("Warning", table_cell),
             Paragraph("Statements following unconditional <code>return</code> or <code>throw</code>.", table_cell),
             Paragraph("Remove dead code or relocate before exit.", table_cell)
+        ],
+        [
+            Paragraph("<b>SAF007</b>", table_cell),
+            Paragraph("Generic Exception Throw", table_cell),
+            Paragraph("Warning", table_cell),
+            Paragraph("Throwing raw <code>new Exception(...)</code>.", table_cell),
+            Paragraph("Throw specific exceptions (e.g. <code>InvalidOperationException</code>).", table_cell)
         ],
         # Category 3
         [
@@ -583,6 +567,20 @@ def build_rtd_pdf(filename):
             Paragraph("Warning", table_cell),
             Paragraph("Calling deprecated APIs (<code>BinaryFormatter</code>, <code>Thread.Abort</code>).", table_cell),
             Paragraph("Upgrade to supported modern .NET 8 equivalents.", table_cell)
+        ],
+        [
+            Paragraph("<b>ARCH007</b>", table_cell),
+            Paragraph("Method PascalCase", table_cell),
+            Paragraph("Warning", table_cell),
+            Paragraph("Method starting with lowercase or containing underscores.", table_cell),
+            Paragraph("Rename method to standard PascalCase.", table_cell)
+        ],
+        [
+            Paragraph("<b>ARCH008</b>", table_cell),
+            Paragraph("Field Casing Standard", table_cell),
+            Paragraph("Warning", table_cell),
+            Paragraph("Private/internal field in PascalCase without underscore.", table_cell),
+            Paragraph("Rename field to <code>_camelCase</code> or <code>camelCase</code>.", table_cell)
         ]
     ]
 
@@ -591,8 +589,8 @@ def build_rtd_pdf(filename):
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2980b9")),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor("#ffffff"), colors.HexColor("#f8f9fa")]),
-        ('TOPPADDING', (0, 0), (-1, -1), 1.2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.0),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
     ]))
@@ -607,7 +605,6 @@ def build_rtd_pdf(filename):
         width=532
     ))
 
-    # Build Document
     doc.build(story, canvasmaker=SphinxReadTheDocsCanvas)
     print(f"Successfully generated Sphinx/ReadTheDocs style PDF: {filename}")
 

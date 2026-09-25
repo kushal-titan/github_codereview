@@ -245,6 +245,24 @@ return result;";
             return (rationale, recommendation, steps, example);
         }
 
+        public static (string Rationale, string Recommendation, List<string> ActionSteps, string CodeExample) GetGenericExceptionAdvice(string throwExpr)
+        {
+            var rationale = $"Throwing generic 'System.Exception' via '{throwExpr}' prevents callers from catching and handling specific domain errors.";
+            var recommendation = "Throw specific semantic exceptions such as ArgumentNullException, ArgumentException, or InvalidOperationException.";
+            var steps = new List<string>
+            {
+                "Replace `throw new Exception(...)` with appropriate specific exception.",
+                "Use `ArgumentNullException.ThrowIfNull()` or custom domain exceptions."
+            };
+            var example = 
+@"// ❌ BEFORE (Generic Exception):
+throw new Exception(""User not found"");
+
+// ✅ AFTER (Specific Semantic Exception):
+throw new InvalidOperationException(""User not found"");";
+            return (rationale, recommendation, steps, example);
+        }
+
         // ==========================================
         // 3. CONCURRENCY & ASYNC SAFETY (CON)
         // ==========================================
@@ -566,10 +584,10 @@ public class EmployeeManager { }";
             };
             var example = 
 @"// ❌ BEFORE:
-public string company_name { get; set; }
+public string departmentName { get; set; }
 
 // ✅ AFTER:
-public string CompanyName { get; set; }";
+public string DepartmentName { get; set; }";
             return (rationale, recommendation, steps, example);
         }
 
@@ -589,6 +607,42 @@ int user_id = 10;
 // ✅ AFTER:
 int totalCount = 0;
 int userId = 10;";
+            return (rationale, recommendation, steps, example);
+        }
+
+        public static (string Rationale, string Recommendation, List<string> ActionSteps, string CodeExample) GetMethodNamingAdvice(string methodName, string expectedName)
+        {
+            var rationale = $"Method '{methodName}' violates C# naming standards. Methods must begin with an uppercase letter and follow PascalCase conventions without underscores.";
+            var recommendation = $"Rename method to '{expectedName}'.";
+            var steps = new List<string>
+            {
+                $"Rename method `{methodName}` to `{expectedName}`.",
+                "Update all call sites across the project."
+            };
+            var example = 
+@"// ❌ BEFORE:
+public void printEmployeeInfo() { }
+
+// ✅ AFTER:
+public void PrintEmployeeInfo() { }";
+            return (rationale, recommendation, steps, example);
+        }
+
+        public static (string Rationale, string Recommendation, List<string> ActionSteps, string CodeExample) GetFieldNamingAdvice(string fieldName, string expectedName)
+        {
+            var rationale = $"Private or internal field '{fieldName}' is declared in PascalCase. In C#, fields should use camelCase or an underscore prefix (_camelCase).";
+            var recommendation = $"Rename field to '{expectedName}'.";
+            var steps = new List<string>
+            {
+                $"Rename field `{fieldName}` to `{expectedName}`.",
+                "Update all references within the class."
+            };
+            var example = 
+@"// ❌ BEFORE:
+private List<Employee> EmployeeList;
+
+// ✅ AFTER:
+private readonly List<Employee> _employeeList;";
             return (rationale, recommendation, steps, example);
         }
 

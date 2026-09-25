@@ -143,7 +143,7 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 5. ARCH005: Variable & Parameter Naming (Local variables and parameters must be camelCase; no snake_case)
+            // 5. ARCH005: Variable & Parameter Naming (Local variables & parameters must be camelCase; no snake_case)
             foreach (var varDecl in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
             {
                 string name = varDecl.Identifier.Text;
@@ -216,6 +216,82 @@ namespace CodeMonitor.Analyzers
                             ActionSteps = steps,
                             CodeExample = example
                         };
+                    }
+                }
+            }
+
+            // 7. ARCH007: Method PascalCase Naming (All method declarations must start with uppercase letter)
+            foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            {
+                string name = method.Identifier.Text;
+                if (string.IsNullOrEmpty(name)) continue;
+
+                // Ignore explicit interface implementations or special methods
+                if (method.ExplicitInterfaceSpecifier != null) continue;
+
+                if (char.IsLower(name[0]) || name.Contains('_'))
+                {
+                    int line = method.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        string expected = ToPascalCase(name);
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetMethodNamingAdvice(name, expected);
+                        yield return new Violation
+                        {
+                            RuleId = "ARCH007",
+                            RuleName = "Method Naming Violation (Must be PascalCase)",
+                            TargetFile = filePath,
+                            MemberName = name,
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = $"Method '{name}' must start with an uppercase letter and use PascalCase conventions.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
+                    }
+                }
+            }
+
+            // 8. ARCH008: Private / Internal Field Casing Standard (Must be _camelCase or camelCase)
+            foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
+            {
+                bool isPublic = field.Modifiers.Any(SyntaxKind.PublicKeyword);
+                bool isConst = field.Modifiers.Any(SyntaxKind.ConstKeyword);
+                bool isStaticReadonly = field.Modifiers.Any(SyntaxKind.StaticKeyword) && field.Modifiers.Any(SyntaxKind.ReadOnlyKeyword);
+
+                if (!isPublic && !isConst && !isStaticReadonly)
+                {
+                    foreach (var variable in field.Declaration.Variables)
+                    {
+                        string name = variable.Identifier.Text;
+                        if (string.IsNullOrEmpty(name) || name.Length < 2) continue;
+
+                        // Flag PascalCase fields without leading underscore (e.g. EmployeeList)
+                        if (char.IsUpper(name[0]))
+                        {
+                            int line = variable.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                            if (changedLines == null || changedLines.Contains(line))
+                            {
+                                string expected = "_" + ToCamelCase(name);
+                                var (rationale, recommendation, steps, example) = RecommendationEngine.GetFieldNamingAdvice(name, expected);
+                                yield return new Violation
+                                {
+                                    RuleId = "ARCH008",
+                                    RuleName = "Field Casing Violation (PascalCase in Private Field)",
+                                    TargetFile = filePath,
+                                    MemberName = name,
+                                    LineNumber = line,
+                                    Severity = ViolationSeverity.Warning,
+                                    Description = $"Private field '{name}' is declared in PascalCase. Private/internal fields should use camelCase or an underscore prefix (e.g., '{expected}').",
+                                    Rationale = rationale,
+                                    RecommendedFix = recommendation,
+                                    ActionSteps = steps,
+                                    CodeExample = example
+                                };
+                            }
+                        }
                     }
                 }
             }
