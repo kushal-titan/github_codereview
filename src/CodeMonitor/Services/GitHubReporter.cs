@@ -90,7 +90,7 @@ namespace CodeMonitor.Services
 
         public string? WriteWarningsMarkdownReport(AnalysisReport report, string workingDirectory, QualityConfig config)
         {
-            if (!config.SaveWarningsToMarkdown || report.WarningCount == 0)
+            if (!config.SaveWarningsToMarkdown)
             {
                 return null;
             }
@@ -110,33 +110,56 @@ namespace CodeMonitor.Services
                 string latestFilePath = Path.Combine(warningsDir, "latest_warnings.md");
 
                 var sb = new StringBuilder();
-                sb.AppendLine("# ⚠️ Code Quality Warnings & Advisories Report");
-                sb.AppendLine();
-                sb.AppendLine($"> **Generated:** `{report.AnalysisTime:yyyy-MM-dd HH:mm:ss} UTC`  ");
-                sb.AppendLine($"> **Repository:** `{report.Repository}`  ");
-                sb.AppendLine($"> **Branch:** `{report.Branch}` | **Commit:** `{report.CommitSha}`  ");
-                sb.AppendLine($"> **Author:** `{report.AuthorName}` `{(!string.IsNullOrWhiteSpace(report.AuthorEmail) ? $"<{report.AuthorEmail}>" : "")}`  ");
-                if (!string.IsNullOrWhiteSpace(report.PullRequestNumber))
+                if (report.WarningCount == 0)
                 {
-                    sb.AppendLine($"> **Pull Request:** [#{report.PullRequestNumber}]({report.PullRequestUrl})  ");
+                    sb.AppendLine("# 🛡️ Code Quality Warnings & Advisories Report");
+                    sb.AppendLine();
+                    sb.AppendLine($"> **Status:** ✅ **0 Advisory Warnings Found**  ");
+                    sb.AppendLine($"> **Generated:** `{report.AnalysisTime:yyyy-MM-dd HH:mm:ss} UTC`  ");
+                    sb.AppendLine($"> **Repository:** `{report.Repository}`  ");
+                    sb.AppendLine($"> **Branch:** `{report.Branch}` | **Commit:** `{report.CommitSha}`  ");
+                    sb.AppendLine($"> **Author:** `{report.AuthorName}` `{(!string.IsNullOrWhiteSpace(report.AuthorEmail) ? $"<{report.AuthorEmail}>" : "")}`  ");
+                    if (!string.IsNullOrWhiteSpace(report.PullRequestNumber))
+                    {
+                        sb.AppendLine($"> **Pull Request:** [#{report.PullRequestNumber}]({report.PullRequestUrl})  ");
+                    }
+                    sb.AppendLine();
+                    sb.AppendLine("---");
+                    sb.AppendLine();
+                    sb.AppendLine("### ✅ All Checks Passed With Zero Warnings");
+                    sb.AppendLine();
+                    sb.AppendLine("No code smells, cognitive complexity issues, or naming standard advisories were found in the analyzed changes.");
                 }
-                sb.AppendLine();
-                sb.AppendLine("---");
-                sb.AppendLine();
-                sb.AppendLine($"## 📊 Summary of Advisory Warnings ({report.WarningCount})");
-                sb.AppendLine();
-                sb.AppendLine("| Severity | Rule ID | Category | Location | Target | Actual vs Limit | Recommended Remediation |");
-                sb.AppendLine("| :---: | :--- | :--- | :--- | :--- | :---: | :--- |");
-
-                var warnings = report.Violations.Where(v => v.Severity == ViolationSeverity.Warning).ToList();
-                foreach (var v in warnings)
+                else
                 {
-                    string relPath = GetRelativePath(v.TargetFile, workingDirectory);
-                    string location = $"`{relPath}:{v.LineNumber}`";
-                    string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Advisory";
-                    string category = v.Category.ToString();
+                    sb.AppendLine("# ⚠️ Code Quality Warnings & Advisories Report");
+                    sb.AppendLine();
+                    sb.AppendLine($"> **Generated:** `{report.AnalysisTime:yyyy-MM-dd HH:mm:ss} UTC`  ");
+                    sb.AppendLine($"> **Repository:** `{report.Repository}`  ");
+                    sb.AppendLine($"> **Branch:** `{report.Branch}` | **Commit:** `{report.CommitSha}`  ");
+                    sb.AppendLine($"> **Author:** `{report.AuthorName}` `{(!string.IsNullOrWhiteSpace(report.AuthorEmail) ? $"<{report.AuthorEmail}>" : "")}`  ");
+                    if (!string.IsNullOrWhiteSpace(report.PullRequestNumber))
+                    {
+                        sb.AppendLine($"> **Pull Request:** [#{report.PullRequestNumber}]({report.PullRequestUrl})  ");
+                    }
+                    sb.AppendLine();
+                    sb.AppendLine("---");
+                    sb.AppendLine();
+                    sb.AppendLine($"## 📊 Summary of Advisory Warnings ({report.WarningCount})");
+                    sb.AppendLine();
+                    sb.AppendLine("| Severity | Rule ID | Category | Location | Target | Actual vs Limit | Recommended Remediation |");
+                    sb.AppendLine("| :---: | :--- | :--- | :--- | :--- | :---: | :--- |");
 
-                    sb.AppendLine($"| ⚠️ **Warning** | `{v.RuleId}` {v.RuleName} | {category} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
+                    var warnings = report.Violations.Where(v => v.Severity == ViolationSeverity.Warning).ToList();
+                    foreach (var v in warnings)
+                    {
+                        string relPath = GetRelativePath(v.TargetFile, workingDirectory);
+                        string location = $"`{relPath}:{v.LineNumber}`";
+                        string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Advisory";
+                        string category = v.Category.ToString();
+
+                        sb.AppendLine($"| ⚠️ **Warning** | `{v.RuleId}` {v.RuleName} | {category} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
+                    }
                 }
 
                 // Remediation blueprints for warnings
