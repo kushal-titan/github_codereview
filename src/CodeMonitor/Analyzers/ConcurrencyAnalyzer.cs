@@ -11,7 +11,7 @@ namespace CodeMonitor.Analyzers
     public class ConcurrencyAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "CON000";
-        public string RuleName => "Concurrency & Async Safety Analyzer";
+        public string RuleName => "Concurrency & Async Safety Suite";
 
         public IEnumerable<Violation> Analyze(SyntaxTree tree, string filePath, QualityConfig config, ISet<int>? changedLines = null)
         {
@@ -142,39 +142,265 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 5. CON005: Unawaited Async Task Call (Fire-and-forget unawaited task call in expression statement)
+            // 5. CON005: Unawaited Async Task Call
             foreach (var exprStmt in root.DescendantNodes().OfType<ExpressionStatementSyntax>())
             {
                 if (exprStmt.Expression is InvocationExpressionSyntax invocation)
                 {
                     string invocationStr = invocation.Expression.ToString();
-                    bool isAsyncMethodCall = invocationStr.EndsWith("Async") || invocationStr.Contains("Async(");
-
-                    if (isAsyncMethodCall)
+                    if (invocationStr.EndsWith("Async") && !invocationStr.Contains("Task.Run") && !invocationStr.Contains("Task.Factory") && !invocationStr.Contains("Task.Delay"))
                     {
-                        // Check if it's not awaited
-                        bool isAwaited = exprStmt.Expression is AwaitExpressionSyntax;
-                        if (!isAwaited)
+                        int line = exprStmt.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
                         {
-                            int line = exprStmt.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetUnawaitedTaskAdvice(invocationStr);
+                            yield return new Violation
+                            {
+                                RuleId = "CON005",
+                                RuleName = "Unawaited Async Task Call",
+                                TargetFile = filePath,
+                                MemberName = invocationStr,
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Async method '{invocationStr}' is invoked as a standalone statement without 'await'.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 6. CON006: Thread.Sleep in Async Method
+            foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            {
+                if (method.Modifiers.Any(SyntaxKind.AsyncKeyword) && method.Body != null)
+                {
+                    var sleepCalls = method.Body.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                        .Where(i => i.Expression.ToString() == "Thread.Sleep");
+
+                    foreach (var sleep in sleepCalls)
+                    {
+                        int line = sleep.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetThreadSleepInAsyncAdvice(method.Identifier.Text);
+                            yield return new Violation
+                            {
+                                RuleId = "CON006",
+                                RuleName = "Thread.Sleep in Async Method",
+                                TargetFile = filePath,
+                                MemberName = $"{method.Identifier.Text}->Thread.Sleep",
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Error,
+                                Description = $"Calling 'Thread.Sleep' inside async method '{method.Identifier.Text}' blocks thread pool worker thread. Use 'await Task.Delay(...)'.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 7. CON007: Shared Static State Mutation from Instance Method
+            var classDeclarations = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+            foreach (var cls in classDeclarations)
+            {
+                var staticFieldNames = cls.Members.OfType<FieldDeclarationSyntax>()
+                    .Where(f => f.Modifiers.Any(SyntaxKind.StaticKeyword) && !f.Modifiers.Any(SyntaxKind.ReadOnlyKeyword) && !f.Modifiers.Any(SyntaxKind.ConstKeyword))
+                    .SelectMany(f => f.Declaration.Variables.Select(v => v.Identifier.Text))
+                    .ToHashSet();
+
+                if (staticFieldNames.Count > 0)
+                {
+                    var instanceMethods = cls.Members.OfType<MethodDeclarationSyntax>()
+                        .Where(m => !m.Modifiers.Any(SyntaxKind.StaticKeyword) && m.Body != null);
+
+                    foreach (var method in instanceMethods)
+                    {
+                        var assignments = method.Body!.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+                            .Where(a => staticFieldNames.Contains(a.Left.ToString()));
+
+                        foreach (var assign in assignments)
+                        {
+                            bool isInsideLock = assign.Ancestors().Any(a => a is LockStatementSyntax);
+                            if (!isInsideLock)
+                            {
+                                int line = assign.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                                if (changedLines == null || changedLines.Contains(line))
+                                {
+                                    var (rationale, recommendation, steps, example) = RecommendationEngine.GetSharedStaticMutationAdvice(assign.Left.ToString(), method.Identifier.Text);
+                                    yield return new Violation
+                                    {
+                                        RuleId = "CON007",
+                                        RuleName = "Shared Static State Mutation",
+                                        TargetFile = filePath,
+                                        MemberName = assign.Left.ToString(),
+                                        LineNumber = line,
+                                        Severity = ViolationSeverity.Warning,
+                                        Description = $"Static field '{assign.Left}' is mutated from instance method '{method.Identifier.Text}' without synchronization locks.",
+                                        Rationale = rationale,
+                                        RecommendedFix = recommendation,
+                                        ActionSteps = steps,
+                                        CodeExample = example
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 8. CON008: Missing ConfigureAwait(false) in Non-UI / Library Code
+            foreach (var awaitExpr in root.DescendantNodes().OfType<AwaitExpressionSyntax>())
+            {
+                string exprText = awaitExpr.Expression.ToString();
+                if (!exprText.Contains("ConfigureAwait") && (exprText.EndsWith("Async()") || exprText.Contains("Task.")))
+                {
+                    int line = awaitExpr.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetMissingConfigureAwaitAdvice(exprText);
+                        yield return new Violation
+                        {
+                            RuleId = "CON008",
+                            RuleName = "Missing ConfigureAwait(false)",
+                            TargetFile = filePath,
+                            MemberName = exprText,
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = $"Awaited task '{exprText}' does not specify 'ConfigureAwait(false)', risking synchronization context overhead and deadlocks.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
+                    }
+                }
+            }
+
+            // 9. CON009: Loop Variable Closure in Async / Tasks
+            foreach (var loop in root.DescendantNodes().Where(n => n is ForStatementSyntax || n is ForEachStatementSyntax))
+            {
+                string loopVar = "";
+                if (loop is ForStatementSyntax forS && forS.Declaration != null && forS.Declaration.Variables.Count > 0)
+                    loopVar = forS.Declaration.Variables[0].Identifier.Text;
+                else if (loop is ForEachStatementSyntax feS)
+                    loopVar = feS.Identifier.Text;
+
+                if (!string.IsNullOrEmpty(loopVar))
+                {
+                    var taskRuns = loop.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                        .Where(inv => inv.Expression.ToString() == "Task.Run" || inv.Expression.ToString() == "ThreadPool.QueueUserWorkItem");
+
+                    foreach (var tr in taskRuns)
+                    {
+                        bool capturesLoopVar = tr.ArgumentList.Arguments.Any(a => a.ToString().Contains(loopVar));
+                        if (capturesLoopVar)
+                        {
+                            int line = tr.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                             if (changedLines == null || changedLines.Contains(line))
                             {
-                                var (rationale, recommendation, steps, example) = RecommendationEngine.GetUnawaitedTaskAdvice(invocation.ToString());
+                                var (rationale, recommendation, steps, example) = RecommendationEngine.GetLoopClosureAdvice(loopVar);
                                 yield return new Violation
                                 {
-                                    RuleId = "CON005",
-                                    RuleName = "Unawaited Async Task Call",
+                                    RuleId = "CON009",
+                                    RuleName = "Loop Variable Closure in Async Task",
                                     TargetFile = filePath,
-                                    MemberName = invocation.ToString(),
+                                    MemberName = loopVar,
                                     LineNumber = line,
-                                    Severity = ViolationSeverity.Warning,
-                                    Description = $"Async invocation '{invocation}' is called without 'await'. Exceptions thrown in this task will be unhandled.",
+                                    Severity = ViolationSeverity.Error,
+                                    Description = $"Loop variable '{loopVar}' is captured in a background task closure, leading to race conditions across iterations.",
                                     Rationale = rationale,
                                     RecommendedFix = recommendation,
                                     ActionSteps = steps,
                                     CodeExample = example
                                 };
                             }
+                        }
+                    }
+                }
+            }
+
+            // 10. CON010: Discarded CancellationToken
+            foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            {
+                if (method.ParameterList != null && method.Body != null)
+                {
+                    var ctParam = method.ParameterList.Parameters.FirstOrDefault(p => p.Type?.ToString() == "CancellationToken");
+                    if (ctParam != null)
+                    {
+                        string ctName = ctParam.Identifier.Text;
+                        var asyncCalls = method.Body.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                            .Where(inv => inv.Expression.ToString().EndsWith("Async"));
+
+                        foreach (var ac in asyncCalls)
+                        {
+                            bool passesToken = ac.ArgumentList.Arguments.Any(arg => arg.ToString() == ctName);
+                            if (!passesToken && !ac.ToString().Contains("Task.Delay") && !ac.ToString().Contains("Task.Yield"))
+                            {
+                                int line = ac.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                                if (changedLines == null || changedLines.Contains(line))
+                                {
+                                    var (rationale, recommendation, steps, example) = RecommendationEngine.GetDiscardedCancellationTokenAdvice(ac.ToString(), ctName);
+                                    yield return new Violation
+                                    {
+                                        RuleId = "CON010",
+                                        RuleName = "Discarded CancellationToken",
+                                        TargetFile = filePath,
+                                        MemberName = ac.ToString(),
+                                        LineNumber = line,
+                                        Severity = ViolationSeverity.Warning,
+                                        Description = $"Method accepts '{ctName}' but omits passing it to async invocation '{ac.Expression}'.",
+                                        Rationale = rationale,
+                                        RecommendedFix = recommendation,
+                                        ActionSteps = steps,
+                                        CodeExample = example
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 11. CON011: Thread-Unsafe Collection in Parallel Loop
+            foreach (var parallelCall in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                string pExpr = parallelCall.Expression.ToString();
+                if (pExpr.StartsWith("Parallel.ForEach") || pExpr.StartsWith("Parallel.For"))
+                {
+                    var unsafeMutations = parallelCall.ArgumentList.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                        .Where(inv =>
+                        {
+                            string s = inv.Expression.ToString();
+                            return s.EndsWith(".Add") || s.EndsWith(".Remove") || s.EndsWith(".Clear");
+                        });
+
+                    foreach (var badMut in unsafeMutations)
+                    {
+                        int line = badMut.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetParallelCollectionMutationAdvice(badMut.ToString());
+                            yield return new Violation
+                            {
+                                RuleId = "CON011",
+                                RuleName = "Thread-Unsafe Collection Mutation in Parallel",
+                                TargetFile = filePath,
+                                MemberName = badMut.ToString(),
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Error,
+                                Description = $"Mutating non-thread-safe collection '{badMut}' inside Parallel loop causes data corruption and memory faults.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
                         }
                     }
                 }

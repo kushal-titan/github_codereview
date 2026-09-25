@@ -12,7 +12,7 @@ namespace CodeMonitor.Analyzers
     public class RuntimeSafetyAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "SAF000";
-        public string RuleName => "Runtime Safety & Defect Analyzer";
+        public string RuleName => "Runtime Safety & Bug Suite";
 
         public IEnumerable<Violation> Analyze(SyntaxTree tree, string filePath, QualityConfig config, ISet<int>? changedLines = null)
         {
@@ -142,7 +142,6 @@ namespace CodeMonitor.Analyzers
             }
 
             // 4. SAF004: Array Bounds Violation / Off-by-One Loops
-            // 4a. Negative index literal
             foreach (var elem in root.DescendantNodes().OfType<ElementAccessExpressionSyntax>())
             {
                 var arg = elem.ArgumentList.Arguments.FirstOrDefault();
@@ -170,7 +169,6 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 4b. Off-by-one loop condition: for (int i = 0; i <= arr.Length; i++)
             foreach (var forStmt in root.DescendantNodes().OfType<ForStatementSyntax>())
             {
                 if (forStmt.Condition is BinaryExpressionSyntax cond && cond.IsKind(SyntaxKind.LessThanOrEqualExpression))
@@ -259,7 +257,7 @@ namespace CodeMonitor.Analyzers
                                 MemberName = nextStmt.ToString(),
                                 LineNumber = line,
                                 Severity = ViolationSeverity.Warning,
-                                Description = $"Statement '{nextStmt.ToString().TrimEnd(';')}' will never be executed because it appears after an unconditional {current.Kind().ToString().Replace("Statement", "")}.",
+                                Description = $"Statement '{nextStmt.ToString().TrimEnd(';')}' will never be executed because it appears after an unconditional exit.",
                                 Rationale = rationale,
                                 RecommendedFix = recommendation,
                                 ActionSteps = steps,
@@ -297,37 +295,309 @@ namespace CodeMonitor.Analyzers
                     }
                 }
             }
+
+            // 8. SAF008: Missing Null Argument Guard in Public Methods
+            foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            {
+                if (method.Modifiers.Any(m => m.IsKind(SyntaxKind.PublicKeyword)) && method.Body != null && method.ParameterList != null)
+                {
+                    foreach (var param in method.ParameterList.Parameters)
+                    {
+                        string paramType = param.Type?.ToString() ?? "";
+                        string paramName = param.Identifier.Text;
+                        if (!IsValueType(paramType) && !string.IsNullOrEmpty(paramName) && paramType != "string" && !paramType.EndsWith("?"))
+                        {
+                            // Check if parameter is dereferenced inside method body
+                            bool isDereferenced = method.Body.DescendantNodes()
+                                .OfType<MemberAccessExpressionSyntax>()
+                                .Any(m => m.Expression.ToString() == paramName && !m.ToString().StartsWith($"{paramName}?."));
+
+                            if (isDereferenced)
+                            {
+                                string bodyText = method.Body.ToString();
+                                bool hasGuard = bodyText.Contains($"ArgumentNullException.ThrowIfNull({paramName})") ||
+                                               bodyText.Contains($"{paramName} == null") ||
+                                               bodyText.Contains($"{paramName} is null");
+
+                                if (!hasGuard)
+                                {
+                                    int line = param.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                                    if (changedLines == null || changedLines.Contains(line))
+                                    {
+                                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetMissingNullGuardAdvice(paramName, method.Identifier.Text);
+                                        yield return new Violation
+                                        {
+                                            RuleId = "SAF008",
+                                            RuleName = "Missing Null Argument Guard",
+                                            TargetFile = filePath,
+                                            MemberName = $"{method.Identifier.Text}({paramName})",
+                                            LineNumber = line,
+                                            Severity = ViolationSeverity.Warning,
+                                            Description = $"Public method '{method.Identifier.Text}' dereferences parameter '{paramName}' without null validation.",
+                                            Rationale = rationale,
+                                            RecommendedFix = recommendation,
+                                            ActionSteps = steps,
+                                            CodeExample = example
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 9. SAF009: Infinite Loop Defect (while(true) / for(;;) with no reachable break/return/throw)
+            foreach (var whileStmt in root.DescendantNodes().OfType<WhileStatementSyntax>())
+            {
+                if (whileStmt.Condition.ToString() == "true")
+                {
+                    bool hasExit = whileStmt.Statement.DescendantNodes().Any(n =>
+                        n is BreakStatementSyntax || n is ReturnStatementSyntax || n is ThrowStatementSyntax);
+
+                    if (!hasExit)
+                    {
+                        int line = whileStmt.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetInfiniteLoopAdvice();
+                            yield return new Violation
+                            {
+                                RuleId = "SAF009",
+                                RuleName = "Infinite Loop Defect",
+                                TargetFile = filePath,
+                                MemberName = "while(true)",
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Error,
+                                Description = "Infinite loop detected: 'while(true)' contains no reachable break, return, or throw statement.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 10. SAF010: Inexact Float/Double Equality
+            foreach (var binary in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
+            {
+                if (binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression))
+                {
+                    string left = binary.Left.ToString();
+                    string right = binary.Right.ToString();
+                    if (left.EndsWith("f") || left.EndsWith("d") || left.EndsWith("F") || left.EndsWith("D") ||
+                        right.EndsWith("f") || right.EndsWith("d") || right.EndsWith("F") || right.EndsWith("D"))
+                    {
+                        int line = binary.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetFloatEqualityAdvice(binary.ToString());
+                            yield return new Violation
+                            {
+                                RuleId = "SAF010",
+                                RuleName = "Inexact Floating Point Equality",
+                                TargetFile = filePath,
+                                MemberName = binary.ToString(),
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Comparing floating-point values directly using '{binary.OperatorToken.Text}' is unsafe due to precision rounding errors. Use Math.Abs(a - b) < epsilon.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 11. SAF011: Redundant Null Coalescing Trap (x ?? x)
+            foreach (var coalesce in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
+            {
+                if (coalesce.IsKind(SyntaxKind.CoalesceExpression) && coalesce.Left.ToString() == coalesce.Right.ToString())
+                {
+                    int line = coalesce.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetRedundantNullCoalescingAdvice(coalesce.ToString());
+                        yield return new Violation
+                        {
+                            RuleId = "SAF011",
+                            RuleName = "Redundant Null Coalescing Expression",
+                            TargetFile = filePath,
+                            MemberName = coalesce.ToString(),
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = $"Redundant null coalescing expression '{coalesce}': Left and Right operands are identical.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
+                    }
+                }
+            }
+
+            // 12. SAF012: Collection Mutation Inside Foreach Loop
+            foreach (var foreachStmt in root.DescendantNodes().OfType<ForEachStatementSyntax>())
+            {
+                string collectionName = foreachStmt.Expression.ToString();
+                var modifyingCalls = foreachStmt.Statement.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                    .Where(inv =>
+                    {
+                        string expr = inv.Expression.ToString();
+                        return expr == $"{collectionName}.Add" || expr == $"{collectionName}.Remove" ||
+                               expr == $"{collectionName}.Clear" || expr == $"{collectionName}.Insert";
+                    });
+
+                foreach (var mod in modifyingCalls)
+                {
+                    int line = mod.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetCollectionMutationAdvice(collectionName, mod.ToString());
+                        yield return new Violation
+                        {
+                            RuleId = "SAF012",
+                            RuleName = "Collection Mutation During Iteration",
+                            TargetFile = filePath,
+                            MemberName = mod.ToString(),
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Error,
+                            Description = $"Modifying collection '{collectionName}' inside its own foreach loop will throw InvalidOperationException.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
+                    }
+                }
+            }
+
+            // 13. SAF013: Stack Trace Truncation (catch(Exception ex) { throw ex; })
+            foreach (var catchClause in root.DescendantNodes().OfType<CatchClauseSyntax>())
+            {
+                if (catchClause.Declaration != null && !string.IsNullOrEmpty(catchClause.Declaration.Identifier.Text))
+                {
+                    string exIdentifier = catchClause.Declaration.Identifier.Text;
+                    var badThrows = catchClause.Block.DescendantNodes().OfType<ThrowStatementSyntax>()
+                        .Where(t => t.Expression is IdentifierNameSyntax id && id.Identifier.Text == exIdentifier);
+
+                    foreach (var badThrow in badThrows)
+                    {
+                        int line = badThrow.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetStackTraceTruncationAdvice(exIdentifier);
+                            yield return new Violation
+                            {
+                                RuleId = "SAF013",
+                                RuleName = "Stack Trace Truncation (throw ex)",
+                                TargetFile = filePath,
+                                MemberName = badThrow.ToString(),
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Using '{badThrow}' resets the original stack trace. Use 'throw;' to preserve the original exception call stack.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 14. SAF014: Equals & GetHashCode Inconsistency
+            var classDecls = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
+            foreach (var cls in classDecls)
+            {
+                bool hasEquals = cls.Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.Text == "Equals" && m.Modifiers.Any(mod => mod.IsKind(SyntaxKind.OverrideKeyword)));
+                bool hasHashCode = cls.Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.Text == "GetHashCode" && m.Modifiers.Any(mod => mod.IsKind(SyntaxKind.OverrideKeyword)));
+
+                if (hasEquals ^ hasHashCode)
+                {
+                    int line = cls.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        string missingMethod = hasEquals ? "GetHashCode()" : "Equals(object)";
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetEqualsHashCodeAdvice(cls.Identifier.Text, missingMethod);
+                        yield return new Violation
+                        {
+                            RuleId = "SAF014",
+                            RuleName = "Equals & GetHashCode Inconsistency",
+                            TargetFile = filePath,
+                            MemberName = cls.Identifier.Text,
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = $"Class '{cls.Identifier.Text}' overrides one of Equals/GetHashCode but not the other, breaking hash-based collections.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
+                    }
+                }
+            }
+
+            // 15. SAF015: Dangerous Explicit Cast
+            foreach (var cast in root.DescendantNodes().OfType<CastExpressionSyntax>())
+            {
+                if (cast.Expression is IdentifierNameSyntax && !cast.Ancestors().Any(a => a is IfStatementSyntax || a is IsPatternExpressionSyntax))
+                {
+                    string castType = cast.Type.ToString();
+                    if (!IsPrimitiveType(castType) && !castType.EndsWith("?"))
+                    {
+                        int line = cast.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetDangerousCastAdvice(cast.ToString(), castType);
+                            yield return new Violation
+                            {
+                                RuleId = "SAF015",
+                                RuleName = "Dangerous Explicit Cast",
+                                TargetFile = filePath,
+                                MemberName = cast.ToString(),
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Direct explicit cast '{cast}' will throw InvalidCastException if type mismatch occurs. Use 'as' operator or pattern matching 'is'.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
         }
 
         private static bool IsZeroValue(ExpressionSyntax expr, SyntaxNode? scope, int usageSpanStart, SyntaxNode rootNode)
         {
-            // 1. Direct Literal checks
             if (expr is LiteralExpressionSyntax lit)
             {
                 string text = lit.Token.ValueText;
                 return text == "0" || text == "0.0" || text == "0f" || text == "0m" || text == "0d" || text == "0L" || text == "0D";
             }
 
-            // 2. Parenthesized expressions (0)
             if (expr is ParenthesizedExpressionSyntax paren)
             {
                 return IsZeroValue(paren.Expression, scope, usageSpanStart, rootNode);
             }
 
-            // 3. Unary expressions (+0, -0)
             if (expr is PrefixUnaryExpressionSyntax prefix)
             {
                 return IsZeroValue(prefix.Operand, scope, usageSpanStart, rootNode);
             }
 
-            // 4. Local variable tracking within enclosing method/block scope
             if (expr is IdentifierNameSyntax id)
             {
                 string varName = id.Identifier.Text;
 
                 if (scope != null)
                 {
-                    // Check for preceding re-assignments: b = 0;
                     var latestAssignment = scope.DescendantNodes()
                         .OfType<AssignmentExpressionSyntax>()
                         .Where(a => a.Left.ToString() == varName && a.SpanStart < usageSpanStart)
@@ -339,7 +609,6 @@ namespace CodeMonitor.Analyzers
                         return IsZeroValue(latestAssignment.Right, scope, latestAssignment.SpanStart, rootNode);
                     }
 
-                    // Check for local variable declarator: int b = 0;
                     var declarator = scope.DescendantNodes()
                         .OfType<VariableDeclaratorSyntax>()
                         .Where(v => v.Identifier.Text == varName && v.SpanStart < usageSpanStart)
@@ -352,7 +621,6 @@ namespace CodeMonitor.Analyzers
                     }
                 }
 
-                // Check class-level field declarations: private static int b = 0;
                 var classScope = (scope ?? rootNode).Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
                 if (classScope != null)
                 {
@@ -368,6 +636,18 @@ namespace CodeMonitor.Analyzers
             }
 
             return false;
+        }
+
+        private static bool IsValueType(string typeName)
+        {
+            return typeName == "int" || typeName == "long" || typeName == "short" || typeName == "byte" ||
+                   typeName == "float" || typeName == "double" || typeName == "decimal" || typeName == "bool" ||
+                   typeName == "char" || typeName == "Guid" || typeName == "DateTime" || typeName == "TimeSpan";
+        }
+
+        private static bool IsPrimitiveType(string typeName)
+        {
+            return IsValueType(typeName) || typeName == "object" || typeName == "string";
         }
     }
 }

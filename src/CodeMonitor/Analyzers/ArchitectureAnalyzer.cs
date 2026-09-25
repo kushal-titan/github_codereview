@@ -12,7 +12,7 @@ namespace CodeMonitor.Analyzers
     public class ArchitectureAnalyzer : ICodeAnalyzer
     {
         public string RuleId => "ARCH000";
-        public string RuleName => "Architecture & Clean Standards Analyzer";
+        public string RuleName => "Architecture & Clean Standards Suite";
 
         public IEnumerable<Violation> Analyze(SyntaxTree tree, string filePath, QualityConfig config, ISet<int>? changedLines = null)
         {
@@ -179,7 +179,7 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 6. ARCH006: Obsolete API Usage (Flagging [Obsolete] attributes or deprecated framework API calls)
+            // 6. ARCH006: Obsolete API Usage
             string[] obsoleteApis = { "BinaryFormatter", "Thread.Abort", "WebRequest.Create", "AppDomain.Unload" };
             foreach (var node in root.DescendantNodes())
             {
@@ -225,8 +225,6 @@ namespace CodeMonitor.Analyzers
             {
                 string name = method.Identifier.Text;
                 if (string.IsNullOrEmpty(name)) continue;
-
-                // Ignore explicit interface implementations or special methods
                 if (method.ExplicitInterfaceSpecifier != null) continue;
 
                 if (char.IsLower(name[0]) || name.Contains('_'))
@@ -268,7 +266,6 @@ namespace CodeMonitor.Analyzers
                         string name = variable.Identifier.Text;
                         if (string.IsNullOrEmpty(name) || name.Length < 2) continue;
 
-                        // Flag PascalCase fields without leading underscore (e.g. EmployeeList)
                         if (char.IsUpper(name[0]))
                         {
                             int line = variable.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
@@ -292,6 +289,237 @@ namespace CodeMonitor.Analyzers
                                 };
                             }
                         }
+                    }
+                }
+            }
+
+            // 9. ARCH009: Console I/O in Domain Logic (Console.WriteLine in business logic classes)
+            foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                string expr = invocation.Expression.ToString();
+                if (expr.StartsWith("Console.Write") || expr.StartsWith("Console.WriteLine"))
+                {
+                    var enclosingType = invocation.Ancestors().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+                    string tName = enclosingType?.Identifier.Text ?? "";
+                    if (tName != "Program" && !tName.EndsWith("Console") && !tName.EndsWith("Cli") && !tName.EndsWith("Demo"))
+                    {
+                        int line = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetConsoleInDomainAdvice(tName);
+                            yield return new Violation
+                            {
+                                RuleId = "ARCH009",
+                                RuleName = "Console I/O in Business Domain Logic",
+                                TargetFile = filePath,
+                                MemberName = expr,
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Direct '{expr}' call inside domain class '{tName}'. Use ILogger<T> structured logging.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 10. ARCH010: Public Field Violation (Public fields instead of properties)
+            foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
+            {
+                bool isPublic = field.Modifiers.Any(SyntaxKind.PublicKeyword);
+                bool isConst = field.Modifiers.Any(SyntaxKind.ConstKeyword);
+                bool isStaticReadonly = field.Modifiers.Any(SyntaxKind.StaticKeyword) && field.Modifiers.Any(SyntaxKind.ReadOnlyKeyword);
+
+                if (isPublic && !isConst && !isStaticReadonly)
+                {
+                    foreach (var variable in field.Declaration.Variables)
+                    {
+                        int line = variable.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            string fName = variable.Identifier.Text;
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetPublicFieldAdvice(fName, field.Declaration.Type.ToString());
+                            yield return new Violation
+                            {
+                                RuleId = "ARCH010",
+                                RuleName = "Public Field Encapsulation Violation",
+                                TargetFile = filePath,
+                                MemberName = fName,
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Public field '{fName}' violates encapsulation. Use auto-implemented properties ({{ get; set; }}).",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 11. ARCH011: Empty Marker Interface Anti-Pattern
+            foreach (var iface in root.DescendantNodes().OfType<InterfaceDeclarationSyntax>())
+            {
+                if (iface.Members.Count == 0 && (iface.BaseList == null || iface.BaseList.Types.Count == 0))
+                {
+                    int line = iface.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetEmptyInterfaceAdvice(iface.Identifier.Text);
+                        yield return new Violation
+                        {
+                            RuleId = "ARCH011",
+                            RuleName = "Empty Marker Interface Anti-Pattern",
+                            TargetFile = filePath,
+                            MemberName = iface.Identifier.Text,
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = $"Interface '{iface.Identifier.Text}' is an empty marker interface. Use custom Attributes instead.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
+                    }
+                }
+            }
+
+            // 12. ARCH012: Layer Boundary Violation (Domain referencing Presentation/UI namespaces)
+            var usings = root.DescendantNodes().OfType<UsingDirectiveSyntax>();
+            bool isDomainFile = filePath.Replace('\\', '/').Contains("/Domain/") || filePath.Replace('\\', '/').Contains("/Entities/") || filePath.Replace('\\', '/').Contains("/Core/");
+            if (isDomainFile)
+            {
+                foreach (var u in usings)
+                {
+                    string uName = u.Name?.ToString() ?? "";
+                    if (uName.Contains("Microsoft.AspNetCore") || uName.Contains("System.Web") || uName.Contains("Controllers") || uName.Contains("Views"))
+                    {
+                        int line = u.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetLayerBoundaryAdvice(uName);
+                            yield return new Violation
+                            {
+                                RuleId = "ARCH012",
+                                RuleName = "Layer Boundary Violation",
+                                TargetFile = filePath,
+                                MemberName = uName,
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Domain layer file imports presentation namespace '{uName}', violating clean architecture inversion of control.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 13. ARCH013: Direct DbContext in Controller
+            foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
+            {
+                string tName = creation.Type.ToString();
+                if (tName.EndsWith("DbContext") || tName.EndsWith("Context"))
+                {
+                    var enclosingClass = creation.Ancestors().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+                    if (enclosingClass != null && enclosingClass.Identifier.Text.EndsWith("Controller"))
+                    {
+                        int line = creation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                        if (changedLines == null || changedLines.Contains(line))
+                        {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetDirectDbContextInControllerAdvice(enclosingClass.Identifier.Text, tName);
+                            yield return new Violation
+                            {
+                                RuleId = "ARCH013",
+                                RuleName = "Direct DbContext Instantiation in Controller",
+                                TargetFile = filePath,
+                                MemberName = $"{enclosingClass.Identifier.Text}->new {tName}",
+                                LineNumber = line,
+                                Severity = ViolationSeverity.Warning,
+                                Description = $"Controller '{enclosingClass.Identifier.Text}' directly instantiates '{tName}' instead of using dependency injection.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 14. ARCH014: Magic Literal Values in Conditions
+            foreach (var binary in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
+            {
+                if (binary.IsKind(SyntaxKind.EqualsExpression) || binary.IsKind(SyntaxKind.NotEqualsExpression) ||
+                    binary.IsKind(SyntaxKind.GreaterThanExpression) || binary.IsKind(SyntaxKind.LessThanExpression))
+                {
+                    if (binary.Right is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.NumericLiteralExpression))
+                    {
+                        int val = 0;
+                        if (int.TryParse(lit.Token.ValueText, out val) && val > 1 && val != 100 && val != 0)
+                        {
+                            var enclosingStatement = binary.Ancestors().OfType<IfStatementSyntax>().FirstOrDefault();
+                            if (enclosingStatement != null)
+                            {
+                                int line = binary.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                                if (changedLines == null || changedLines.Contains(line))
+                                {
+                                    var (rationale, recommendation, steps, example) = RecommendationEngine.GetMagicLiteralAdvice(lit.Token.ValueText);
+                                    yield return new Violation
+                                    {
+                                        RuleId = "ARCH014",
+                                        RuleName = "Magic Literal in Conditional Logic",
+                                        TargetFile = filePath,
+                                        MemberName = binary.ToString(),
+                                        LineNumber = line,
+                                        Severity = ViolationSeverity.Warning,
+                                        Description = $"Magic literal number '{lit.Token.ValueText}' used in conditional logic without named constant or enum.",
+                                        Rationale = rationale,
+                                        RecommendedFix = recommendation,
+                                        ActionSteps = steps,
+                                        CodeExample = example
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 15. ARCH015: Multiple Types Declared in Single File
+            var declaredTypes = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+                .Where(t => t.Parent is BaseNamespaceDeclarationSyntax || t.Parent is CompilationUnitSyntax)
+                .ToList();
+
+            if (declaredTypes.Count > 1)
+            {
+                for (int i = 1; i < declaredTypes.Count; i++)
+                {
+                    var extraType = declaredTypes[i];
+                    int line = extraType.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetMultipleTypesPerFileAdvice(extraType.Identifier.Text);
+                        yield return new Violation
+                        {
+                            RuleId = "ARCH015",
+                            RuleName = "Multiple Top-Level Types in Single File",
+                            TargetFile = filePath,
+                            MemberName = extraType.Identifier.Text,
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = $"Type '{extraType.Identifier.Text}' is declared alongside '{declaredTypes[0].Identifier.Text}'. Each top-level type should reside in its own .cs file.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
                     }
                 }
             }
