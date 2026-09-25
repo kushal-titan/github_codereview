@@ -1,107 +1,164 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace DivisionByZeroSample
+namespace DemoProject
 {
-    class Program
+    class program
     {
+        private static readonly object lockOne = new object();
+        private static readonly object lockTwo = new object();
+
+        private static readonly object resourceA = new object();
+        private static readonly object resourceB = new object();
+
+        private static readonly object sync1 = new object();
+        private static readonly object sync2 = new object();
+
+        static int GlobalCounter = 0;
+
         static void Main(string[] args)
         {
-            int a = 100;
-            int b = 0;
+            int UserAge = 25;
+            string user_Name = "John";
+            string Accountnumber = "AC1001";
 
-            Console.WriteLine("Starting calculations...");
+            Console.WriteLine("Application Started");
 
-            // Error 1
-            int result1 = a / b;
-            Console.WriteLine(result1);
+            Thread t1 = new Thread(FirstWorker);
+            Thread t2 = new Thread(SecondWorker);
 
-            CalculateAverage();
-            CalculatePercentage();
-            ProcessData();
-            ComputeRatio();
+            t1.Start();
+            t2.Start();
+
+            Thread t3 = new Thread(ResourceWorkerOne);
+            Thread t4 = new Thread(ResourceWorkerTwo);
+
+            t3.Start();
+            t4.Start();
+
+            StartTaskProcessing();
+
+            ProcessCustomer(null);
+
+            int calculationResult = CalculateValue(100, 20);
+            Console.WriteLine(calculationResult);
+
+            List<string> records = null;
+            Console.WriteLine(records.Count);
+
+            Console.WriteLine(user_Name);
+            Console.WriteLine(Accountnumber);
+            Console.WriteLine(UserAge);
+
+            long ValueOne = 100;
+            long ValueTwo = 200;
+            long ValueThree = ValueOne + ValueTwo;
+
+            Console.WriteLine(ValueThree);
+
+            Console.ReadLine();
         }
 
-        static void CalculateAverage()
+        static void FirstWorker()
         {
-            int total = 500;
-            int count = 0;
+            lock (lockOne)
+            {
+                Thread.Sleep(100);
 
-            // Error 2
-            int average = total / count;
-            Console.WriteLine(average);
+                lock (lockTwo)
+                {
+                    GlobalCounter++;
+                }
+            }
         }
 
-        static void CalculatePercentage()
+        static void SecondWorker()
         {
-            int obtained = 75;
-            int maximum = 0;
+            lock (lockTwo)
+            {
+                Thread.Sleep(100);
 
-            // Error 3
-            int percentage = (obtained * 100) / maximum;
-            Console.WriteLine(percentage);
+                lock (lockOne)
+                {
+                    GlobalCounter++;
+                }
+            }
         }
 
-        static void ProcessData()
+        static void ResourceWorkerOne()
         {
-            int records = 250;
-            int groups = 0;
+            lock (resourceA)
+            {
+                Thread.Sleep(100);
 
-            // Error 4
-            int perGroup = records / groups;
-            Console.WriteLine(perGroup);
-
-            MoreProcessing();
+                lock (resourceB)
+                {
+                    Console.WriteLine("Resource Worker One");
+                }
+            }
         }
 
-        static void MoreProcessing()
+        static void ResourceWorkerTwo()
         {
-            int value = 900;
-            int divisor = 0;
+            lock (resourceB)
+            {
+                Thread.Sleep(100);
 
-            // Error 5
-            int output = value / divisor;
-            Console.WriteLine(output);
+                lock (resourceA)
+                {
+                    Console.WriteLine("Resource Worker Two");
+                }
+            }
         }
 
-        static void ComputeRatio()
+        static void StartTaskProcessing()
         {
-            int x = 40;
-            int y = 0;
+            Task task = Task.Run(() =>
+            {
+                lock (sync1)
+                {
+                    Thread.Sleep(100);
 
-            // Error 6
-            int ratio = x / y;
-            Console.WriteLine(ratio);
+                    lock (sync2)
+                    {
+                        Console.WriteLine("Task Running");
+                    }
+                }
+            });
 
-            NestedCalculation();
+            Task.Run(() =>
+            {
+                lock (sync2)
+                {
+                    Thread.Sleep(100);
+
+                    lock (sync1)
+                    {
+                        Console.WriteLine("Background Task");
+                    }
+                }
+            });
+
+            task.Wait();
         }
 
-        static void NestedCalculation()
+        static void ProcessCustomer(string customerName)
         {
-            int numerator = 1000;
-            int denominator = 0;
-
-            // Error 7
-            int result = numerator / denominator;
-            Console.WriteLine(result);
-
-            FinalCalculation();
+            Console.WriteLine(customerName.Length);
         }
 
-        static void FinalCalculation()
+        static int CalculateValue(int firstNumber, int secondNumber)
         {
-            int sales = 5000;
-            int months = 0;
+            int tempResult = firstNumber;
 
-            // Error 8
-            int monthlySales = sales / months;
-            Console.WriteLine(monthlySales);
+            if (secondNumber > 0)
+            {
+                tempResult += secondNumber;
+            }
 
-            int distance = 100;
-            int time = 0;
-
-            // Error 9
-            int speed = distance / time;
-            Console.WriteLine(speed);
+            return tempResult;
         }
     }
 }
