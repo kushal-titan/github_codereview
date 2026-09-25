@@ -14,6 +14,7 @@ namespace CodeMonitor.Models
     {
         public string RuleId { get; set; } = string.Empty;
         public string RuleName { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
         public string TargetFile { get; set; } = string.Empty;
         public string MemberName { get; set; } = string.Empty;
         public int LineNumber { get; set; }

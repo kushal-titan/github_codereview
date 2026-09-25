@@ -168,7 +168,7 @@ namespace CodeMonitor.Services
                         string relPath = GetRelativePath(v.TargetFile, workingDirectory);
                         string location = $"`{relPath}:{v.LineNumber}`";
                         string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Critical Error";
-                        string category = v.Category.ToString();
+                        string category = !string.IsNullOrWhiteSpace(v.Category) ? v.Category : GetCategoryFromRuleId(v.RuleId);
 
                         sb.AppendLine($"| ❌ **Error** | `{v.RuleId}` {v.RuleName} | {category} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
                     }
@@ -386,5 +386,16 @@ namespace CodeMonitor.Services
         {
             return value.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A");
         }
+
+        private static string GetCategoryFromRuleId(string ruleId) => ruleId switch
+        {
+            var id when id.StartsWith("CQ") => "Code Quality",
+            var id when id.StartsWith("SAF") => "Runtime Safety",
+            var id when id.StartsWith("CON") => "Concurrency",
+            var id when id.StartsWith("SEC") => "Security",
+            var id when id.StartsWith("PERF") => "Performance",
+            var id when id.StartsWith("ARCH") => "Architecture",
+            _ => "General"
+        };
     }
 }

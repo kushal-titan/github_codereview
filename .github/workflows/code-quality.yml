@@ -134,33 +134,41 @@ jobs:
 
       - name: 📋 File GitHub Issue for Blocking Errors
         if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          echo "Checking for blocking errors report..."
-          if [ -f "issues/latest_errors.md" ] && grep -q "❌ \*\*Error\*\*" "issues/latest_errors.md"; then
-            echo "Found blocking errors in issues/latest_errors.md"
-            cat issues/latest_errors.md | head -n 30
-            
-            TIMESTAMP=$(TZ="Asia/Kolkata" date +"%Y-%m-%d %I:%M:%S %p IST")
-            if [ -n "$PR_NUMBER" ]; then
-              TITLE="❌ Code Quality Blocking Errors [PR #${PR_NUMBER}] - ${TIMESTAMP}"
-            else
-              TITLE="❌ Code Quality Blocking Errors - ${TIMESTAMP}"
-            fi
-            
-            echo "Filing GitHub Issue for blocking errors with title: $TITLE"
-            gh issue create \
-              --repo "${{ github.repository }}" \
-              --title "$TITLE" \
-              --body-file "issues/latest_errors.md" && echo "✅ Successfully created GitHub Issue for blocking errors!" || {
-                echo "⚠️ Note: gh issue create encountered an error. If 403 Forbidden, please enable 'Read and write permissions' in Repo Settings -> Actions -> General -> Workflow permissions."
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const errorFile = 'issues/latest_errors.md';
+            if (fs.existsSync(errorFile)) {
+              const body = fs.readFileSync(errorFile, 'utf8');
+              if (body.includes('Summary of Critical Blocking Errors') || body.includes('Action Required') || body.includes('❌ **Error**')) {
+                const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
+                const now = new Date();
+                const istOffset = 5.5 * 60 * 60 * 1000;
+                const istDate = new Date(now.getTime() + istOffset);
+                const timeString = istDate.toISOString().replace('T', ' ').substring(0, 19) + ' IST';
+                const title = prNumber 
+                  ? `❌ Code Quality Blocking Errors [PR #${prNumber}] - ${timeString}`
+                  : `❌ Code Quality Blocking Errors - ${timeString}`;
+                  
+                console.log(`🚀 Creating GitHub Issue for blocking errors: ${title}`);
+                try {
+                  const issue = await github.rest.issues.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title: title,
+                    body: body
+                  });
+                  console.log(`✅ Successfully created GitHub Issue #${issue.data.number}: ${issue.data.html_url}`);
+                } catch (err) {
+                  console.log('⚠️ Could not create GitHub Issue:', err.message);
+                }
+              } else {
+                console.log('✅ 0 critical blocking errors detected in issues/latest_errors.md. Skipping issue creation.');
               }
-          else
-            echo "✅ Zero blocking errors detected in this analysis run. No GitHub Issue filed."
-          fi
+            } else {
+              console.log('ℹ️ No issues/latest_errors.md found.');
+            }
 
       - name: 💾 Commit & Push Error Report to Branch
         if: always() && github.event_name == 'pull_request'
