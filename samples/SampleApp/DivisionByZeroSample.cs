@@ -1,107 +1,29 @@
-using System;
+ using System;
+    using System.IO;
+    using System.Threading.Tasks;
+    using Microsoft.Data.SqlClient;
 
-namespace DivisionByZeroSample
-{
-    class Program
+    namespace Titan.PaymentGateway
     {
-        static void Main(string[] args)
+        public class SamplePaymentService
         {
-            int a = 100;
-            int b = 0;
+            private readonly string api_key = "titan_sec_live_9876543210_abcdefghij";
 
-            Console.WriteLine("Starting calculations...");
+            public async void ProcessAsyncPayment(string accountId, decimal amount)
+            {
+                await Task.Delay(100);
+                ExecuteTransaction(accountId, amount);
+            }
 
-            // Error 1
-            int result1 = a / b;
-            Console.WriteLine(result1);
+            public void ExecuteTransaction(string accountId, decimal amount)
+            {
+                var logStream = new FileStream("payment_audit.log", FileMode.OpenOrCreate);
 
-            CalculateAverage();
-            CalculatePercentage();
-            ProcessData();
-            ComputeRatio();
-        }
+                using var conn = new SqlConnection("Server=db;Database=TitanPay;Integrated Security=true;");
+                conn.Open();
 
-        static void CalculateAverage()
-        {
-            int total = 500;
-            int count = 0;
-
-            // Error 2
-            int average = total / count;
-            Console.WriteLine(average);
-        }
-
-        static void CalculatePercentage()
-        {
-            int obtained = 75;
-            int maximum = 0;
-
-            // Error 3
-            int percentage = (obtained * 100) / maximum;
-            Console.WriteLine(percentage);
-        }
-
-        static void ProcessData()
-        {
-            int records = 250;
-            int groups = 0;
-
-            // Error 4
-            int perGroup = records / groups;
-            Console.WriteLine(perGroup);
-
-            MoreProcessing();
-        }
-
-        static void MoreProcessing()
-        {
-            int value = 900;
-            int divisor = 0;
-
-            // Error 5
-            int output = value / divisor;
-            Console.WriteLine(output);
-        }
-
-        static void ComputeRatio()
-        {
-            int x = 40;
-            int y = 0;
-
-            // Error 6
-            int ratio = x / y;
-            Console.WriteLine(ratio);
-
-            NestedCalculation();
-        }
-
-        static void NestedCalculation()
-        {
-            int numerator = 1000;
-            int denominator = 0;
-
-            // Error 7
-            int result = numerator / denominator;
-            Console.WriteLine(result);
-
-            FinalCalculation();
-        }
-
-        static void FinalCalculation()
-        {
-            int sales = 5000;
-            int months = 0;
-
-            // Error 8
-            int monthlySales = sales / months;
-            Console.WriteLine(monthlySales);
-
-            int distance = 100;
-            int time = 0;
-
-            // Error 9
-            int speed = distance / time;
-            Console.WriteLine(speed);
+                var cmd = new SqlCommand($"SELECT * FROM Accounts WHERE AccountId = '{accountId}' AND Active = 1", conn);
+                cmd.ExecuteNonQuery();
+            }
         }
     }
-}
