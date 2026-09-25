@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using CodeMonitor.Knowledge;
 using CodeMonitor.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -17,17 +18,21 @@ namespace CodeMonitor.Analyzers
         {
             var root = tree.GetRoot();
 
-            // 1. SEC001: SQL Injection Detection (String Interpolation in SQL Commands)
+            // 1. SEC001: SQL Injection Detection (String Interpolation / Concatenation in SQL Commands)
+            string[] sqlMethods = { "ExecuteNonQuery", "ExecuteReader", "ExecuteScalar", "FromSqlRaw", "SqlCommand", "Query", "QueryAsync", "Execute", "ExecuteAsync", "SqlDataAdapter" };
             foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 string call = invocation.ToString();
-                if (call.Contains("ExecuteNonQuery") || call.Contains("ExecuteReader") || call.Contains("FromSqlRaw") || call.Contains("SqlCommand"))
+                if (sqlMethods.Any(m => call.Contains(m)))
                 {
-                    if (invocation.ArgumentList.Arguments.Any(a => a.Expression is InterpolatedStringExpressionSyntax || a.Expression is BinaryExpressionSyntax b && b.IsKind(SyntaxKind.AddExpression)))
+                    if (invocation.ArgumentList.Arguments.Any(a =>
+                        a.Expression is InterpolatedStringExpressionSyntax ||
+                        (a.Expression is BinaryExpressionSyntax b && b.IsKind(SyntaxKind.AddExpression))))
                     {
                         int line = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                         if (changedLines == null || changedLines.Contains(line))
                         {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetSqlInjectionAdvice(invocation.ToString());
                             yield return new Violation
                             {
                                 RuleId = "SEC001",
@@ -37,7 +42,10 @@ namespace CodeMonitor.Analyzers
                                 LineNumber = line,
                                 Severity = ViolationSeverity.Error,
                                 Description = "Dynamic SQL query constructed using raw string interpolation or concatenation.",
-                                RecommendedFix = "Use parameterized queries (e.g. SqlParameter, Dapper parameters, or EF Core FromSqlInterpolated)."
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
                             };
                         }
                     }
@@ -45,7 +53,7 @@ namespace CodeMonitor.Analyzers
             }
 
             // 2. SEC002: Hardcoded Secrets, Passwords, and API Keys
-            var secretRegex = new Regex(@"(password|passwd|api_key|apikey|secret|token|private_key)\s*=\s*""[^""]{6,}""", RegexOptions.IgnoreCase);
+            var secretRegex = new Regex(@"(password|passwd|api_key|apikey|secret|token|private_key|connstr|connectionstring)\s*=\s*""[^""]{6,}""", RegexOptions.IgnoreCase);
             foreach (var literal in root.DescendantNodes().OfType<LiteralExpressionSyntax>())
             {
                 if (literal.IsKind(SyntaxKind.StringLiteralExpression))
@@ -56,6 +64,7 @@ namespace CodeMonitor.Analyzers
                         int line = literal.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                         if (changedLines == null || changedLines.Contains(line))
                         {
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetHardcodedSecretAdvice(literal.ToString());
                             yield return new Violation
                             {
                                 RuleId = "SEC002",
@@ -64,35 +73,93 @@ namespace CodeMonitor.Analyzers
                                 MemberName = literal.ToString(),
                                 LineNumber = line,
                                 Severity = ViolationSeverity.Error,
-                                Description = "Potential hardcoded secret or API key credential embedded in source code.",
-                                RecommendedFix = "Move secrets to Azure Key Vault, AWS Secrets Manager, or Environment Variables."
+                                Description = "Potential hardcoded secret, password, or API key credential embedded in source code.",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
                             };
                         }
                     }
                 }
             }
 
-            // 3. SEC003: Insecure Cryptographic Algorithm
-            string[] weakCrypto = { "MD5", "SHA1", "DES", "RC2", "TripleDESCryptoServiceProvider" };
-            foreach (var creation in root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
+            // 3. SEC003: Insecure Cryptographic Algorithm (MD5, SHA1, DES, RC2, TripleDES)
+            string[] weakCrypto = { "MD5", "SHA1", "DES", "RC2", "TripleDES", "TripleDESCryptoServiceProvider" };
+            foreach (var node in root.DescendantNodes())
             {
-                string typeName = creation.Type.ToString();
-                if (weakCrypto.Any(w => typeName.Contains(w)))
+                string? matchedName = null;
+                if (node is ObjectCreationExpressionSyntax creation)
                 {
-                    int line = creation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    string typeName = creation.Type.ToString();
+                    if (weakCrypto.Any(w => typeName.Contains(w))) matchedName = typeName;
+                }
+                else if (node is InvocationExpressionSyntax invocation)
+                {
+                    string call = invocation.ToString();
+                    if (weakCrypto.Any(w => call.Contains(w))) matchedName = call;
+                }
+
+                if (matchedName != null)
+                {
+                    int line = node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                     if (changedLines == null || changedLines.Contains(line))
                     {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetWeakCryptoAdvice(matchedName);
                         yield return new Violation
                         {
                             RuleId = "SEC003",
                             RuleName = "Weak Cryptographic Algorithm",
                             TargetFile = filePath,
-                            MemberName = typeName,
+                            MemberName = matchedName,
                             LineNumber = line,
                             Severity = ViolationSeverity.Error,
-                            Description = $"Insecure cryptography provider '{typeName}' detected.",
-                            RecommendedFix = "Upgrade to strong algorithms: SHA-256 / SHA-512 for hashing or AES-256-GCM for encryption."
+                            Description = $"Insecure cryptography provider '{matchedName}' detected.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
+                    }
+                }
+            }
+
+            // 4. SEC004: Cross-Site Scripting (XSS) / Raw Unencoded Output
+            string[] xssSinks = { "Response.Write", "Response.WriteAsync", "HtmlString", "Html.Raw" };
+            foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                string call = invocation.Expression.ToString();
+                if (xssSinks.Any(sink => call.EndsWith(sink) || call.Contains(sink)))
+                {
+                    var firstArg = invocation.ArgumentList.Arguments.FirstOrDefault();
+                    if (firstArg != null)
+                    {
+                        bool isDynamic = firstArg.Expression is InterpolatedStringExpressionSyntax ||
+                                         firstArg.Expression is BinaryExpressionSyntax b && b.IsKind(SyntaxKind.AddExpression) ||
+                                         firstArg.Expression.ToString().Contains("Request.");
+
+                        if (isDynamic)
+                        {
+                            int line = invocation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                            if (changedLines == null || changedLines.Contains(line))
+                            {
+                                var (rationale, recommendation, steps, example) = RecommendationEngine.GetXssAdvice(invocation.ToString());
+                                yield return new Violation
+                                {
+                                    RuleId = "SEC004",
+                                    RuleName = "Cross-Site Scripting (XSS) Risk",
+                                    TargetFile = filePath,
+                                    MemberName = invocation.ToString(),
+                                    LineNumber = line,
+                                    Severity = ViolationSeverity.Error,
+                                    Description = "Writing unencoded dynamic data directly to HTML response can allow XSS injection.",
+                                    Rationale = rationale,
+                                    RecommendedFix = recommendation,
+                                    ActionSteps = steps,
+                                    CodeExample = example
+                                };
+                            }
+                        }
                     }
                 }
             }

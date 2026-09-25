@@ -136,7 +136,47 @@ namespace CodeMonitor.Services
                 sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
             }
 
-            sb.AppendLine();
+            // Expandable Remediation Blueprints Section
+            var detailedViolations = report.Violations.Where(v => v.ActionSteps.Count > 0 || !string.IsNullOrWhiteSpace(v.CodeExample)).ToList();
+            if (detailedViolations.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("### 🛠️ Remediation & Refactoring Blueprints");
+                sb.AppendLine();
+
+                foreach (var v in detailedViolations)
+                {
+                    string icon = v.Severity == ViolationSeverity.Error ? "❌" : "⚠️";
+                    string relPath = GetRelativePath(v.TargetFile, workingDirectory);
+
+                    sb.AppendLine($"<details>");
+                    sb.AppendLine($"<summary><b>{icon} [{v.RuleId}] {v.RuleName} &mdash; <code>{relPath}:{v.LineNumber}</code></b></summary>");
+                    sb.AppendLine();
+                    sb.AppendLine($"- **Problem:** {v.Description}");
+                    if (!string.IsNullOrWhiteSpace(v.Rationale))
+                    {
+                        sb.AppendLine($"- **Why it matters:** {v.Rationale}");
+                    }
+                    if (v.ActionSteps.Count > 0)
+                    {
+                        sb.AppendLine("- **Action Steps:**");
+                        foreach (var step in v.ActionSteps)
+                        {
+                            sb.AppendLine($"  1. {step}");
+                        }
+                    }
+                    if (!string.IsNullOrWhiteSpace(v.CodeExample))
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("```csharp");
+                        sb.AppendLine(v.CodeExample);
+                        sb.AppendLine("```");
+                    }
+                    sb.AppendLine("</details>");
+                    sb.AppendLine();
+                }
+            }
+
             sb.AppendLine("---");
             sb.AppendLine("*🤖 Automated analysis performed by Microsoft Roslyn in GitHub Actions.*");
 

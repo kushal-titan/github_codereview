@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using CodeMonitor.Knowledge;
 using CodeMonitor.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -36,6 +37,10 @@ namespace CodeMonitor.Analyzers
                 {
                     if (lockPairs[i].Outer == lockPairs[j].Inner && lockPairs[i].Inner == lockPairs[j].Outer)
                     {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetDeadlockAdvice(
+                            lockPairs[j].Method, lockPairs[i].Method,
+                            $"{lockPairs[j].Outer}->{lockPairs[j].Inner}", $"{lockPairs[i].Outer}->{lockPairs[i].Inner}");
+
                         yield return new Violation
                         {
                             RuleId = "CON001",
@@ -45,7 +50,10 @@ namespace CodeMonitor.Analyzers
                             LineNumber = lockPairs[j].Line,
                             Severity = ViolationSeverity.Error,
                             Description = $"Deadlock Risk: Method '{lockPairs[j].Method}' acquires locks ({lockPairs[j].Outer} -> {lockPairs[j].Inner}), inverting lock order in '{lockPairs[i].Method}'.",
-                            RecommendedFix = "Establish a strict, global lock acquisition hierarchy across all threads."
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
                     }
                 }
@@ -59,6 +67,7 @@ namespace CodeMonitor.Analyzers
                     int line = method.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                     if (changedLines == null || changedLines.Contains(line))
                     {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetAsyncVoidAdvice(method.Identifier.Text);
                         yield return new Violation
                         {
                             RuleId = "CON002",
@@ -67,8 +76,11 @@ namespace CodeMonitor.Analyzers
                             MemberName = method.Identifier.Text,
                             LineNumber = line,
                             Severity = ViolationSeverity.Error,
-                            Description = $"Method '{method.Identifier.Text}' is declared 'async void'. Unhandled exceptions will terminate the process.",
-                            RecommendedFix = "Change return type from 'void' to 'Task' or 'ValueTask'."
+                            Description = $"Method '{method.Identifier.Text}' is declared 'async void'. Unhandled exceptions will crash the process.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
                     }
                 }
@@ -83,6 +95,7 @@ namespace CodeMonitor.Analyzers
                     int line = member.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                     if (changedLines == null || changedLines.Contains(line))
                     {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetSyncOverAsyncAdvice(member.ToString());
                         yield return new Violation
                         {
                             RuleId = "CON003",
@@ -91,14 +104,17 @@ namespace CodeMonitor.Analyzers
                             MemberName = member.ToString(),
                             LineNumber = line,
                             Severity = ViolationSeverity.Error,
-                            Description = $"Synchronous blocking call '{memberName}' on Task can cause thread starvation and deadlocks.",
-                            RecommendedFix = "Use 'await' asynchronously instead of blocking with .Result or .Wait()."
+                            Description = $"Synchronous blocking call '{memberName}' on Task can cause thread pool starvation and deadlocks.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
                     }
                 }
             }
 
-            // 4. CON004: Unsafe Lock Target (lock(this) or lock("string"))
+            // 4. CON004: Unsafe Lock Target (lock(this), lock("string"), lock(typeof(...)))
             foreach (var lk in root.DescendantNodes().OfType<LockStatementSyntax>())
             {
                 string expr = lk.Expression.ToString();
@@ -107,6 +123,7 @@ namespace CodeMonitor.Analyzers
                     int line = lk.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                     if (changedLines == null || changedLines.Contains(line))
                     {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetUnsafeLockAdvice(expr);
                         yield return new Violation
                         {
                             RuleId = "CON004",
@@ -116,8 +133,49 @@ namespace CodeMonitor.Analyzers
                             LineNumber = line,
                             Severity = ViolationSeverity.Warning,
                             Description = $"Locking on '{expr}' exposes synchronization object to external code.",
-                            RecommendedFix = "Lock on a private, static readonly object instance: 'private static readonly object _lock = new object();'."
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
+                    }
+                }
+            }
+
+            // 5. CON005: Unawaited Async Task Call (Fire-and-forget unawaited task call in expression statement)
+            foreach (var exprStmt in root.DescendantNodes().OfType<ExpressionStatementSyntax>())
+            {
+                if (exprStmt.Expression is InvocationExpressionSyntax invocation)
+                {
+                    string invocationStr = invocation.Expression.ToString();
+                    bool isAsyncMethodCall = invocationStr.EndsWith("Async") || invocationStr.Contains("Async(");
+
+                    if (isAsyncMethodCall)
+                    {
+                        // Check if it's not awaited
+                        bool isAwaited = exprStmt.Expression is AwaitExpressionSyntax;
+                        if (!isAwaited)
+                        {
+                            int line = exprStmt.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                            if (changedLines == null || changedLines.Contains(line))
+                            {
+                                var (rationale, recommendation, steps, example) = RecommendationEngine.GetUnawaitedTaskAdvice(invocation.ToString());
+                                yield return new Violation
+                                {
+                                    RuleId = "CON005",
+                                    RuleName = "Unawaited Async Task Call",
+                                    TargetFile = filePath,
+                                    MemberName = invocation.ToString(),
+                                    LineNumber = line,
+                                    Severity = ViolationSeverity.Warning,
+                                    Description = $"Async invocation '{invocation}' is called without 'await'. Exceptions thrown in this task will be unhandled.",
+                                    Rationale = rationale,
+                                    RecommendedFix = recommendation,
+                                    ActionSteps = steps,
+                                    CodeExample = example
+                                };
+                            }
+                        }
                     }
                 }
             }

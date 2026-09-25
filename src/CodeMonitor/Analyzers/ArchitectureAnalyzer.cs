@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CodeMonitor.Knowledge;
 using CodeMonitor.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -27,6 +28,7 @@ namespace CodeMonitor.Analyzers
                     if (changedLines == null || changedLines.Contains(line))
                     {
                         string expected = name.StartsWith("I") ? name : "I" + ToPascalCase(name);
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetInterfaceNamingAdvice(name, expected);
                         yield return new Violation
                         {
                             RuleId = "ARCH001",
@@ -36,7 +38,10 @@ namespace CodeMonitor.Analyzers
                             LineNumber = line,
                             Severity = ViolationSeverity.Warning,
                             Description = $"Interface '{name}' must start with an uppercase 'I' prefix followed by PascalCase.",
-                            RecommendedFix = $"Rename interface to '{expected}'."
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
                     }
                 }
@@ -53,6 +58,8 @@ namespace CodeMonitor.Analyzers
                         int line = method.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                         if (changedLines == null || changedLines.Contains(line))
                         {
+                            string expected = name + "Async";
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetAsyncNamingAdvice(name, expected);
                             yield return new Violation
                             {
                                 RuleId = "ARCH002",
@@ -61,8 +68,11 @@ namespace CodeMonitor.Analyzers
                                 MemberName = name,
                                 LineNumber = line,
                                 Severity = ViolationSeverity.Warning,
-                                Description = $"Async method '{name}' should end with the 'Async' suffix (e.g. '{name}Async').",
-                                RecommendedFix = $"Rename method to '{name}Async'."
+                                Description = $"Async method '{name}' should end with the 'Async' suffix (e.g. '{expected}').",
+                                Rationale = rationale,
+                                RecommendedFix = recommendation,
+                                ActionSteps = steps,
+                                CodeExample = example
                             };
                         }
                     }
@@ -83,6 +93,7 @@ namespace CodeMonitor.Analyzers
                     if (changedLines == null || changedLines.Contains(line))
                     {
                         string expected = ToPascalCase(name);
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetTypeNamingAdvice(name, expected);
                         yield return new Violation
                         {
                             RuleId = "ARCH003",
@@ -92,7 +103,10 @@ namespace CodeMonitor.Analyzers
                             LineNumber = line,
                             Severity = ViolationSeverity.Warning,
                             Description = $"Type '{name}' violates C# naming standards. Types must be PascalCase without underscores.",
-                            RecommendedFix = $"Rename type to '{expected}'."
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
                     }
                 }
@@ -110,6 +124,7 @@ namespace CodeMonitor.Analyzers
                     if (changedLines == null || changedLines.Contains(line))
                     {
                         string expected = ToPascalCase(name);
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetPropertyNamingAdvice(name, expected);
                         yield return new Violation
                         {
                             RuleId = "ARCH004",
@@ -119,13 +134,16 @@ namespace CodeMonitor.Analyzers
                             LineNumber = line,
                             Severity = ViolationSeverity.Warning,
                             Description = $"Property '{name}' must be PascalCase and start with an uppercase letter.",
-                            RecommendedFix = $"Rename property to '{expected}'."
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
                     }
                 }
             }
 
-            // 5. ARCH005: Variable & Field Naming (Local variables must be camelCase; no snake_case)
+            // 5. ARCH005: Variable & Parameter Naming (Local variables and parameters must be camelCase; no snake_case)
             foreach (var varDecl in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
             {
                 string name = varDecl.Identifier.Text;
@@ -142,6 +160,7 @@ namespace CodeMonitor.Analyzers
                     {
                         string expected = ToCamelCase(name);
                         string problem = isSnakeCase ? "contains underscores (snake_case)" : "is PascalCase instead of camelCase";
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetVariableNamingAdvice(name, expected, problem);
                         yield return new Violation
                         {
                             RuleId = "ARCH005",
@@ -151,7 +170,51 @@ namespace CodeMonitor.Analyzers
                             LineNumber = line,
                             Severity = ViolationSeverity.Warning,
                             Description = $"Variable '{name}' {problem}. In C#, local variables and fields must follow camelCase conventions.",
-                            RecommendedFix = $"Rename variable to '{expected}'."
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
+                        };
+                    }
+                }
+            }
+
+            // 6. ARCH006: Obsolete API Usage (Flagging [Obsolete] attributes or deprecated framework API calls)
+            string[] obsoleteApis = { "BinaryFormatter", "Thread.Abort", "WebRequest.Create", "AppDomain.Unload" };
+            foreach (var node in root.DescendantNodes())
+            {
+                string? matchedObsolete = null;
+
+                if (node is ObjectCreationExpressionSyntax creation)
+                {
+                    string typeName = creation.Type.ToString();
+                    if (obsoleteApis.Any(a => typeName.Contains(a))) matchedObsolete = typeName;
+                }
+                else if (node is InvocationExpressionSyntax invocation)
+                {
+                    string call = invocation.ToString();
+                    if (obsoleteApis.Any(a => call.Contains(a))) matchedObsolete = call;
+                }
+
+                if (matchedObsolete != null)
+                {
+                    int line = node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    if (changedLines == null || changedLines.Contains(line))
+                    {
+                        var (rationale, recommendation, steps, example) = RecommendationEngine.GetObsoleteApiAdvice(matchedObsolete);
+                        yield return new Violation
+                        {
+                            RuleId = "ARCH006",
+                            RuleName = "Obsolete API Usage",
+                            TargetFile = filePath,
+                            MemberName = matchedObsolete,
+                            LineNumber = line,
+                            Severity = ViolationSeverity.Warning,
+                            Description = $"Reference to deprecated API '{matchedObsolete}' detected.",
+                            Rationale = rationale,
+                            RecommendedFix = recommendation,
+                            ActionSteps = steps,
+                            CodeExample = example
                         };
                     }
                 }
