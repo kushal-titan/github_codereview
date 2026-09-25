@@ -51,7 +51,7 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. SAF002: Division / Modulo by Zero Defect (Literals, Constants & Local Variable Tracking)
+            // 2. SAF002: Division / Modulo by Zero Defect (Literals, Constants & Local/Field Variable Tracking)
             foreach (var node in root.DescendantNodes())
             {
                 ExpressionSyntax? divisor = null;
@@ -81,7 +81,7 @@ namespace CodeMonitor.Analyzers
                         a is AnonymousFunctionExpressionSyntax ||
                         a is AccessorDeclarationSyntax);
 
-                    if (IsZeroValue(divisor, enclosingScope, node.SpanStart))
+                    if (IsZeroValue(divisor, enclosingScope, node.SpanStart, node))
                     {
                         if (changedLines == null || changedLines.Contains(line))
                         {
@@ -94,7 +94,7 @@ namespace CodeMonitor.Analyzers
                                 MemberName = opExpr,
                                 LineNumber = line,
                                 Severity = ViolationSeverity.Error,
-                                Description = $"Division or modulo by zero detected in '{opExpr}' (divisor '{divisor}' evaluates to 0).",
+                                Description = $"Division or modulo by zero detected in '{opExpr}' (divisor '{divisor}' resolves to 0).",
                                 Rationale = rationale,
                                 RecommendedFix = recommendation,
                                 ActionSteps = steps,
@@ -299,9 +299,9 @@ namespace CodeMonitor.Analyzers
             }
         }
 
-        private static bool IsZeroValue(ExpressionSyntax expr, SyntaxNode? scope, int usageSpanStart)
+        private static bool IsZeroValue(ExpressionSyntax expr, SyntaxNode? scope, int usageSpanStart, SyntaxNode rootNode)
         {
-            // 1. Literal checks
+            // 1. Direct Literal checks
             if (expr is LiteralExpressionSyntax lit)
             {
                 string text = lit.Token.ValueText;
@@ -311,42 +311,59 @@ namespace CodeMonitor.Analyzers
             // 2. Parenthesized expressions (0)
             if (expr is ParenthesizedExpressionSyntax paren)
             {
-                return IsZeroValue(paren.Expression, scope, usageSpanStart);
+                return IsZeroValue(paren.Expression, scope, usageSpanStart, rootNode);
             }
 
             // 3. Unary expressions (+0, -0)
             if (expr is PrefixUnaryExpressionSyntax prefix)
             {
-                return IsZeroValue(prefix.Operand, scope, usageSpanStart);
+                return IsZeroValue(prefix.Operand, scope, usageSpanStart, rootNode);
             }
 
-            // 4. Local variable tracking within enclosing scope
-            if (expr is IdentifierNameSyntax id && scope != null)
+            // 4. Local variable tracking within enclosing method/block scope
+            if (expr is IdentifierNameSyntax id)
             {
                 string varName = id.Identifier.Text;
 
-                // Look for preceding variable declarators: int b = 0;
-                var declarator = scope.DescendantNodes()
-                    .OfType<VariableDeclaratorSyntax>()
-                    .Where(v => v.Identifier.Text == varName && v.SpanStart < usageSpanStart)
-                    .OrderByDescending(v => v.SpanStart)
-                    .FirstOrDefault();
-
-                if (declarator?.Initializer != null)
+                if (scope != null)
                 {
-                    // Check if there are any intermediate re-assignments before usageSpanStart
+                    // Check for preceding re-assignments: b = 0;
                     var latestAssignment = scope.DescendantNodes()
                         .OfType<AssignmentExpressionSyntax>()
-                        .Where(a => a.Left.ToString() == varName && a.SpanStart > declarator.SpanStart && a.SpanStart < usageSpanStart)
+                        .Where(a => a.Left.ToString() == varName && a.SpanStart < usageSpanStart)
                         .OrderByDescending(a => a.SpanStart)
                         .FirstOrDefault();
 
                     if (latestAssignment != null)
                     {
-                        return IsZeroValue(latestAssignment.Right, scope, latestAssignment.SpanStart);
+                        return IsZeroValue(latestAssignment.Right, scope, latestAssignment.SpanStart, rootNode);
                     }
 
-                    return IsZeroValue(declarator.Initializer.Value, scope, declarator.SpanStart);
+                    // Check for local variable declarator: int b = 0;
+                    var declarator = scope.DescendantNodes()
+                        .OfType<VariableDeclaratorSyntax>()
+                        .Where(v => v.Identifier.Text == varName && v.SpanStart < usageSpanStart)
+                        .OrderByDescending(v => v.SpanStart)
+                        .FirstOrDefault();
+
+                    if (declarator?.Initializer != null)
+                    {
+                        return IsZeroValue(declarator.Initializer.Value, scope, declarator.SpanStart, rootNode);
+                    }
+                }
+
+                // Check class-level field declarations: private static int b = 0;
+                var classScope = (scope ?? rootNode).Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+                if (classScope != null)
+                {
+                    var fieldDecl = classScope.DescendantNodes()
+                        .OfType<VariableDeclaratorSyntax>()
+                        .FirstOrDefault(v => v.Identifier.Text == varName && v.Parent?.Parent is FieldDeclarationSyntax);
+
+                    if (fieldDecl?.Initializer != null)
+                    {
+                        return IsZeroValue(fieldDecl.Initializer.Value, classScope, fieldDecl.SpanStart, rootNode);
+                    }
                 }
             }
 
