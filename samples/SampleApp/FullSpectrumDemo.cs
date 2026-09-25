@@ -1,221 +1,145 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Threading.Tasks;
+using System.Threading;
 
-namespace SampleApp
+namespace DeadlockSamples
 {
-    // =========================================================================
-    // Category 6: Architecture & Standards (ARCH001, ARCH003, ARCH004, ARCH005)
-    // =========================================================================
-
-    // ARCH001: Interface missing 'I' prefix
-    public interface paymentProcessor
+    public class Program
     {
-        void ProcessPayment();
-    }
+        private static readonly object LockA = new object();
+        private static readonly object LockB = new object();
 
-    // ARCH003: Type naming not PascalCase (contains underscores)
-    public class user_account
-    {
-        // ARCH004: Property naming not PascalCase
-        public string first_name { get; set; } = string.Empty;
-        public string last_name { get; set; } = string.Empty;
-    }
+        private static readonly object LockC = new object();
+        private static readonly object LockD = new object();
 
-    public class FullSpectrumDemo
-    {
-        private static readonly object _lockA = new object();
-        private static readonly object _lockB = new object();
+        private static readonly object LockE = new object();
+        private static readonly object LockF = new object();
 
-        // ARCH002: Async method missing 'Async' suffix
-        public async Task FetchRemoteData()
+        private static readonly object LockG = new object();
+        private static readonly object LockH = new object();
+
+        static void Main(string[] args)
         {
-            await Task.Delay(10);
+            Console.WriteLine("Deadlock Sample Application");
         }
 
-        // =========================================================================
-        // Category 1: Structural & Complexity (CQ001, CQ002, CQ003, CQ004)
-        // =========================================================================
-
-        // CQ003: Parameter Count > 4
-        public void ComplexCalculationMethod(int a, int b, int c, int d, int e)
+        public static void DeadlockScenario1()
         {
-            // CQ004: Deep Nesting Depth > 3
-            if (a > 0)
+            Thread t1 = new Thread(() =>
             {
-                if (b > 0)
+                lock (LockA)
                 {
-                    if (c > 0)
+                    Thread.Sleep(100);
+                    lock (LockB)
                     {
-                        if (d > 0)
-                        {
-                            Console.WriteLine("Deeply nested execution block");
-                        }
+                        Console.WriteLine("Thread 1");
                     }
                 }
-            }
-        }
+            });
 
-        // =========================================================================
-        // Category 2: Runtime Safety & Bugs (SAF001 - SAF006)
-        // =========================================================================
-
-        public void RuntimeSafetyDemonstration(Order order, int[] numbers)
-        {
-            // ARCH005: Variable naming violation (snake_case)
-            int item_count = 10;
-
-            // SAF001: Deep null dereferencing without safe navigation (?.)
-            string country = order.CountryCode.ToLower().Trim().ToUpper();
-
-            // SAF002: Division by literal zero
-            int brokenCalc = item_count / 0;
-
-            // SAF003: Resource leak (IDisposable FileStream without using)
-            FileStream leakStream = new FileStream("sample.dat", FileMode.OpenOrCreate);
-            leakStream.WriteByte(1);
-
-            // SAF004a: Array bounds negative index
-            int negativeElem = numbers[-1];
-
-            // SAF004b: Off-by-one loop condition
-            for (int i = 0; i <= numbers.Length; i++)
+            Thread t2 = new Thread(() =>
             {
-                Console.WriteLine(numbers[i]);
-            }
-
-            // SAF005: Empty catch block swallowing exception
-            try
-            {
-                int val = int.Parse("bad_number");
-            }
-            catch (FormatException)
-            {
-            }
-
-            // SAF006: Unreachable dead code
-            return;
-            Console.WriteLine("This statement is unreachable dead code");
-        }
-
-        // =========================================================================
-        // Category 3: Concurrency & Async (CON001 - CON005)
-        // =========================================================================
-
-        // CON001: Lock Order Inversion (Lock A -> Lock B)
-        public void DeadlockMethodAlpha()
-        {
-            lock (_lockA)
-            {
-                lock (_lockB)
+                lock (LockB)
                 {
-                    Console.WriteLine("Holding Lock A then Lock B");
+                    Thread.Sleep(100);
+                    lock (LockA)
+                    {
+                        Console.WriteLine("Thread 2");
+                    }
                 }
-            }
+            });
+
+            t1.Start();
+            t2.Start();
         }
 
-        // CON001: Lock Order Inversion (Lock B -> Lock A)
-        public void DeadlockMethodBeta()
+        public static void DeadlockScenario2()
         {
-            lock (_lockB)
+            Thread t1 = new Thread(() =>
             {
-                lock (_lockA)
+                lock (LockC)
                 {
-                    Console.WriteLine("Holding Lock B then Lock A");
+                    Thread.Sleep(100);
+                    lock (LockD)
+                    {
+                        Console.WriteLine("Process A");
+                    }
                 }
-            }
-        }
+            });
 
-        // CON002: async void anti-pattern
-        public async void FireAndForgetCrashAsync()
-        {
-            await Task.Delay(100);
-        }
-
-        // CON003: Sync-over-async blocking
-        public string GetResultBlocking()
-        {
-            return Task.FromResult("data").Result;
-        }
-
-        // CON004: Unsafe lock target (locking on 'this')
-        public void UnsafeLocking()
-        {
-            lock (this)
+            Thread t2 = new Thread(() =>
             {
-                Console.WriteLine("Locked on this");
-            }
+                lock (LockD)
+                {
+                    Thread.Sleep(100);
+                    lock (LockC)
+                    {
+                        Console.WriteLine("Process B");
+                    }
+                }
+            });
+
+            t1.Start();
+            t2.Start();
         }
 
-        // CON005: Unawaited async task call
-        public void TriggerBackgroundWork()
+        public static void DeadlockScenario3()
         {
-            FetchRemoteData();
-        }
-
-        // =========================================================================
-        // Category 4: Security & Vulnerabilities (SEC001 - SEC004)
-        // =========================================================================
-
-        public void SecurityVulnerabilityDemonstration(string userInput)
-        {
-            // SEC001: SQL Injection risk
-            string query = $"SELECT * FROM Users WHERE Email = '{userInput}'";
-            var cmd = new System.Data.SqlClient.SqlCommand();
-            cmd.ExecuteReader(query);
-
-            // SEC002: Hardcoded secret / API key
-            string api_key = "AKIAIOSFODNN7EXAMPLE_SECRET_KEY_12345";
-
-            // SEC003: Weak cryptographic algorithm
-            using var md5 = MD5.Create();
-
-            // SEC004: Cross-Site Scripting (XSS)
-            var response = new DummyResponse();
-            response.Write($"<div>Hello {userInput}</div>");
-        }
-
-        // =========================================================================
-        // Category 5: Performance & Memory (PERF001 - PERF003)
-        // =========================================================================
-
-        public void PerformanceDemonstration(List<string> items)
-        {
-            string summary = "";
-
-            // PERF001: String concatenation in loop
-            for (int i = 0; i < 100; i++)
+            Thread t1 = new Thread(() =>
             {
-                summary += "Item: " + i;
-            }
+                lock (LockE)
+                {
+                    Thread.Sleep(100);
+                    lock (LockF)
+                    {
+                        Console.WriteLine("Worker 1");
+                    }
+                }
+            });
 
-            // PERF002: Boxing allocation with legacy ArrayList
-            var legacyList = new System.Collections.ArrayList();
-            legacyList.Add(42);
-
-            // PERF003: LINQ .Count() > 0 instead of .Any()
-            if (items.Count() > 0)
+            Thread t2 = new Thread(() =>
             {
-                Console.WriteLine("Collection has items: " + summary);
-            }
+                lock (LockF)
+                {
+                    Thread.Sleep(100);
+                    lock (LockE)
+                    {
+                        Console.WriteLine("Worker 2");
+                    }
+                }
+            });
+
+            t1.Start();
+            t2.Start();
         }
 
-        // =========================================================================
-        // Category 6: Architecture & Standards (ARCH006)
-        // =========================================================================
-
-        public void ObsoleteApiDemonstration()
+        public static void DeadlockScenario4()
         {
-            // ARCH006: Obsolete API usage
-            var formatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
-        }
-    }
+            Thread t1 = new Thread(() =>
+            {
+                lock (LockG)
+                {
+                    Thread.Sleep(100);
+                    lock (LockH)
+                    {
+                        Console.WriteLine("Task X");
+                    }
+                }
+            });
 
-    public class DummyResponse
-    {
-        public void Write(string content) { }
+            Thread t2 = new Thread(() =>
+            {
+                lock (LockH)
+                {
+                    Thread.Sleep(100);
+                    lock (LockG)
+                    {
+                        Console.WriteLine("Task Y");
+                    }
+                }
+            });
+
+            t1.Start();
+            t2.Start();
+        }
     }
 }
