@@ -143,6 +143,8 @@ jobs:
               const body = fs.readFileSync(errorFile, 'utf8');
               if (body.includes('Summary of Critical Blocking Errors') || body.includes('Action Required') || body.includes('❌ **Error**')) {
                 const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
+                const prAuthor = context.payload.pull_request ? context.payload.pull_request.user.login : context.actor;
+                
                 const now = new Date();
                 const istOffset = 5.5 * 60 * 60 * 1000;
                 const istDate = new Date(now.getTime() + istOffset);
@@ -152,16 +154,37 @@ jobs:
                   : `❌ Code Quality Blocking Errors - ${timeString}`;
                   
                 console.log(`🚀 Creating GitHub Issue for blocking errors: ${title}`);
+                console.log(`👤 Assignee (PR Author): ${prAuthor}`);
+                
+                const issuePayload = {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: title,
+                  body: body,
+                  assignees: prAuthor ? [prAuthor] : []
+                };
+                
                 try {
-                  const issue = await github.rest.issues.create({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    title: title,
-                    body: body
-                  });
-                  console.log(`✅ Successfully created GitHub Issue #${issue.data.number}: ${issue.data.html_url}`);
+                  const issue = await github.rest.issues.create(issuePayload);
+                  console.log(`✅ Successfully created GitHub Issue #${issue.data.number} assigned to @${prAuthor}: ${issue.data.html_url}`);
                 } catch (err) {
-                  console.log('⚠️ Could not create GitHub Issue:', err.message);
+                  console.log('⚠️ Failed with assignees in create, attempting fallback:', err.message);
+                  delete issuePayload.assignees;
+                  try {
+                    const fallbackIssue = await github.rest.issues.create(issuePayload);
+                    console.log(`✅ Created fallback GitHub Issue #${fallbackIssue.data.number}: ${fallbackIssue.data.html_url}`);
+                    if (prAuthor) {
+                      await github.rest.issues.addAssignees({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: fallbackIssue.data.number,
+                        assignees: [prAuthor]
+                      });
+                      console.log(`✅ Added assignee @${prAuthor} via addAssignees.`);
+                    }
+                  } catch (fallbackErr) {
+                    console.log('❌ Could not create GitHub Issue:', fallbackErr.message);
+                  }
                 }
               } else {
                 console.log('✅ 0 critical blocking errors detected in issues/latest_errors.md. Skipping issue creation.');
