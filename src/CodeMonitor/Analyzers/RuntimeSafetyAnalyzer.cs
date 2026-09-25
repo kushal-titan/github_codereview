@@ -51,26 +51,50 @@ namespace CodeMonitor.Analyzers
                 }
             }
 
-            // 2. SAF002: Division / Modulo by Zero Defect
-            foreach (var binary in root.DescendantNodes().OfType<BinaryExpressionSyntax>())
+            // 2. SAF002: Division / Modulo by Zero Defect (Literals, Constants & Local Variable Tracking)
+            foreach (var node in root.DescendantNodes())
             {
-                if (binary.IsKind(SyntaxKind.DivideExpression) || binary.IsKind(SyntaxKind.ModuloExpression))
+                ExpressionSyntax? divisor = null;
+                string opExpr = "";
+                int line = 0;
+
+                if (node is BinaryExpressionSyntax binary &&
+                    (binary.IsKind(SyntaxKind.DivideExpression) || binary.IsKind(SyntaxKind.ModuloExpression)))
                 {
-                    if (binary.Right is LiteralExpressionSyntax lit && (lit.Token.ValueText == "0" || lit.Token.ValueText == "0.0" || lit.Token.ValueText == "0f" || lit.Token.ValueText == "0m"))
+                    divisor = binary.Right;
+                    opExpr = binary.ToString();
+                    line = binary.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                }
+                else if (node is AssignmentExpressionSyntax assign &&
+                    (assign.IsKind(SyntaxKind.DivideAssignmentExpression) || assign.IsKind(SyntaxKind.ModuloAssignmentExpression)))
+                {
+                    divisor = assign.Right;
+                    opExpr = assign.ToString();
+                    line = assign.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                }
+
+                if (divisor != null)
+                {
+                    var enclosingScope = node.Ancestors().FirstOrDefault(a =>
+                        a is BaseMethodDeclarationSyntax ||
+                        a is LocalFunctionStatementSyntax ||
+                        a is AnonymousFunctionExpressionSyntax ||
+                        a is AccessorDeclarationSyntax);
+
+                    if (IsZeroValue(divisor, enclosingScope, node.SpanStart))
                     {
-                        int line = binary.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                         if (changedLines == null || changedLines.Contains(line))
                         {
-                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetDivisionByZeroAdvice(binary.ToString());
+                            var (rationale, recommendation, steps, example) = RecommendationEngine.GetDivisionByZeroAdvice(opExpr);
                             yield return new Violation
                             {
                                 RuleId = "SAF002",
                                 RuleName = "Division by Zero Defect",
                                 TargetFile = filePath,
-                                MemberName = binary.ToString(),
+                                MemberName = opExpr,
                                 LineNumber = line,
                                 Severity = ViolationSeverity.Error,
-                                Description = $"Direct division or modulo by literal zero detected in '{binary}'.",
+                                Description = $"Division or modulo by zero detected in '{opExpr}' (divisor '{divisor}' evaluates to 0).",
                                 Rationale = rationale,
                                 RecommendedFix = recommendation,
                                 ActionSteps = steps,
@@ -273,6 +297,60 @@ namespace CodeMonitor.Analyzers
                     }
                 }
             }
+        }
+
+        private static bool IsZeroValue(ExpressionSyntax expr, SyntaxNode? scope, int usageSpanStart)
+        {
+            // 1. Literal checks
+            if (expr is LiteralExpressionSyntax lit)
+            {
+                string text = lit.Token.ValueText;
+                return text == "0" || text == "0.0" || text == "0f" || text == "0m" || text == "0d" || text == "0L" || text == "0D";
+            }
+
+            // 2. Parenthesized expressions (0)
+            if (expr is ParenthesizedExpressionSyntax paren)
+            {
+                return IsZeroValue(paren.Expression, scope, usageSpanStart);
+            }
+
+            // 3. Unary expressions (+0, -0)
+            if (expr is PrefixUnaryExpressionSyntax prefix)
+            {
+                return IsZeroValue(prefix.Operand, scope, usageSpanStart);
+            }
+
+            // 4. Local variable tracking within enclosing scope
+            if (expr is IdentifierNameSyntax id && scope != null)
+            {
+                string varName = id.Identifier.Text;
+
+                // Look for preceding variable declarators: int b = 0;
+                var declarator = scope.DescendantNodes()
+                    .OfType<VariableDeclaratorSyntax>()
+                    .Where(v => v.Identifier.Text == varName && v.SpanStart < usageSpanStart)
+                    .OrderByDescending(v => v.SpanStart)
+                    .FirstOrDefault();
+
+                if (declarator?.Initializer != null)
+                {
+                    // Check if there are any intermediate re-assignments before usageSpanStart
+                    var latestAssignment = scope.DescendantNodes()
+                        .OfType<AssignmentExpressionSyntax>()
+                        .Where(a => a.Left.ToString() == varName && a.SpanStart > declarator.SpanStart && a.SpanStart < usageSpanStart)
+                        .OrderByDescending(a => a.SpanStart)
+                        .FirstOrDefault();
+
+                    if (latestAssignment != null)
+                    {
+                        return IsZeroValue(latestAssignment.Right, scope, latestAssignment.SpanStart);
+                    }
+
+                    return IsZeroValue(declarator.Initializer.Value, scope, declarator.SpanStart);
+                }
+            }
+
+            return false;
         }
     }
 }
