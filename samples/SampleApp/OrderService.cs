@@ -18,4 +18,15 @@ namespace SampleApp
             return new FileStream($"order_{orderId}.log", FileMode.OpenOrCreate);
         }
     }
+
+    public class PaymentGatewayClient
+    {
+        public async System.Threading.Tasks.Task<string> ProcessPaymentAsync(string transactionId)
+        {
+            var httpClient = new System.Net.Http.HttpClient();
+            httpClient.BaseAddress = new Uri("https://api.titan.com/payments");
+            await System.Threading.Tasks.Task.Delay(50);
+            return $"SUCCESS_{transactionId}";
+        }
+    }
 }
