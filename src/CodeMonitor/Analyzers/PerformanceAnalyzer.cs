@@ -28,7 +28,7 @@ namespace CodeMonitor.Analyzers
             {
                 foreach (var assign in loop.DescendantNodes().OfType<AssignmentExpressionSyntax>())
                 {
-                    if (assign.IsKind(SyntaxKind.AddAssignmentExpression))
+                    if (assign.IsKind(SyntaxKind.AddAssignmentExpression) && IsStringConcatenation(assign, root))
                     {
                         int line = assign.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
                         if (changedLines == null || changedLines.Contains(line))
@@ -42,7 +42,7 @@ namespace CodeMonitor.Analyzers
                                 MemberName = assign.ToString(),
                                 LineNumber = line,
                                 Severity = ViolationSeverity.Warning,
-                                Description = "Repeated string concatenation (+=) inside a loop causes excessive GC memory allocations.",
+                                Description = "Repeated string concatenation (+=) inside a loop causes excessive GC memory allocations. Use StringBuilder.",
                                 Rationale = rationale,
                                 RecommendedFix = recommendation,
                                 ActionSteps = steps,
@@ -340,6 +340,87 @@ namespace CodeMonitor.Analyzers
                     }
                 }
             }
+        }
+
+        private static bool IsStringConcatenation(AssignmentExpressionSyntax assign, SyntaxNode root)
+        {
+            string right = assign.Right.ToString();
+            if (assign.Right is LiteralExpressionSyntax lit && lit.IsKind(SyntaxKind.StringLiteralExpression))
+                return true;
+            if (assign.Right is InterpolatedStringExpressionSyntax)
+                return true;
+            if (right.EndsWith(".ToString()"))
+                return true;
+
+            string leftVarName = assign.Left.ToString();
+            var enclosingMethod = assign.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
+            if (enclosingMethod != null)
+            {
+                var localDecl = enclosingMethod.DescendantNodes().OfType<VariableDeclarationSyntax>()
+                    .FirstOrDefault(v => v.Variables.Any(varDecl => varDecl.Identifier.Text == leftVarName));
+
+                if (localDecl != null)
+                {
+                    string typeName = localDecl.Type.ToString();
+                    if (typeName == "string" || typeName == "String")
+                        return true;
+                    if (IsNumericType(typeName))
+                        return false;
+                }
+
+                var param = enclosingMethod.ParameterList?.Parameters.FirstOrDefault(p => p.Identifier.Text == leftVarName);
+                if (param != null)
+                {
+                    string typeName = param.Type?.ToString() ?? "";
+                    if (typeName == "string" || typeName == "String")
+                        return true;
+                    if (IsNumericType(typeName))
+                        return false;
+                }
+            }
+
+            var enclosingClass = assign.Ancestors().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+            if (enclosingClass != null)
+            {
+                var fieldDecl = enclosingClass.DescendantNodes().OfType<FieldDeclarationSyntax>()
+                    .FirstOrDefault(f => f.Declaration.Variables.Any(v => v.Identifier.Text == leftVarName));
+
+                if (fieldDecl != null)
+                {
+                    string typeName = fieldDecl.Declaration.Type.ToString();
+                    if (typeName == "string" || typeName == "String")
+                        return true;
+                    if (IsNumericType(typeName))
+                        return false;
+                }
+            }
+
+            string lowerLeft = leftVarName.ToLowerInvariant();
+            if (lowerLeft == "total" || lowerLeft == "sum" || lowerLeft == "count" || lowerLeft == "i" ||
+                lowerLeft == "j" || lowerLeft == "k" || lowerLeft == "idx" || lowerLeft == "index" ||
+                lowerLeft == "amount" || lowerLeft == "balance" || lowerLeft == "score" || lowerLeft == "result" ||
+                lowerLeft == "val" || lowerLeft == "value" || lowerLeft == "num" || lowerLeft == "number")
+            {
+                return false;
+            }
+
+            if (lowerLeft == "str" || lowerLeft == "text" || lowerLeft == "msg" || lowerLeft == "message" ||
+                lowerLeft == "output" || lowerLeft == "content" || lowerLeft == "body" || lowerLeft == "html" ||
+                lowerLeft == "xml" || lowerLeft == "json" || lowerLeft == "csv" || lowerLeft == "sql" || lowerLeft == "query")
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsNumericType(string typeName)
+        {
+            return typeName == "int" || typeName == "long" || typeName == "double" || typeName == "float" ||
+                   typeName == "decimal" || typeName == "byte" || typeName == "short" || typeName == "uint" ||
+                   typeName == "ulong" || typeName == "ushort" || typeName == "sbyte" || typeName == "nint" ||
+                   typeName == "nuint" || typeName == "Int32" || typeName == "Int64" || typeName == "Double" ||
+                   typeName == "Single" || typeName == "Decimal";
         }
     }
 }
