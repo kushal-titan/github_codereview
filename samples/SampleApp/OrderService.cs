@@ -22,6 +22,13 @@ namespace SampleApp
             return $"Order #{orderId} Processed";
         }
 
+        // ❌ Error: ASY001 Async Void Method
+        public async void ProcessNotificationAsync(string orderId)
+        {
+            await Task.Delay(50);
+            Console.WriteLine($"Notification sent for {orderId}");
+        }
+
         // ✅ SAF003 FIXED: Wrapped in 'using var' declarations for automatic disposal & file unlocking
         public void WriteOrderAuditLog(string orderId, string logMessage)
         {
