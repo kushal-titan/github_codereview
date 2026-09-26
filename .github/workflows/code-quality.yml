@@ -194,6 +194,7 @@ jobs:
             const fs = require('fs');
             const errorFile = 'issues/latest_errors.md';
             const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
+            const branchName = (context.payload.pull_request ? context.payload.pull_request.head.ref : context.ref || '').replace('refs/heads/', '');
             const commitSha = context.sha ? context.sha.substring(0, 7) : '';
             
             let hasErrors = false;
@@ -205,7 +206,7 @@ jobs:
               }
             }
             
-            // 1. Discover files modified in this PR/run
+            // 1. Discover files modified in this commit/PR
             let modifiedFiles = [];
             try {
               const { execSync } = require('child_process');
@@ -231,15 +232,23 @@ jobs:
               console.log('Notice querying open issues:', err.message);
             }
             
-            // Find existing open issue for THIS PR (if any)
-            const existingPrIssue = openIssues.find(issue => {
+            // Search for existing open living issue for this specific PR or branch
+            const contextTag = prNumber ? `[PR #${prNumber}]` : (branchName ? `[Branch: ${branchName}]` : '');
+            const contextLabel = prNumber ? `pr-${prNumber}` : (branchName ? `branch-${branchName}` : '');
+            
+            const existingLivingIssue = openIssues.find(issue => {
               const title = issue.title || '';
               const issueBody = issue.body || '';
-              const isQualityIssue = title.includes('Code Quality Blocking Errors') || title.includes('❌') || issueBody.includes('Critical Blocking Errors');
+              const issueLabels = (issue.labels || []).map(l => typeof l === 'string' ? l : l.name);
+              
+              const isQualityIssue = issueLabels.includes('code-quality-violation') ||
+                                     title.includes('Code Quality Blocking Errors') || 
+                                     title.includes('❌') || 
+                                     issueBody.includes('Critical Blocking Errors');
               if (!isQualityIssue) return false;
-              if (prNumber) {
-                return title.includes(`[PR #${prNumber}]`) || issueBody.includes(`PR #${prNumber}`) || issueBody.includes(`pull/${prNumber}`);
-              }
+              
+              if (contextLabel && issueLabels.includes(contextLabel)) return true;
+              if (contextTag && (title.includes(contextTag) || issueBody.includes(contextTag))) return true;
               return false;
             });
 
@@ -258,8 +267,8 @@ jobs:
               const istOffset = 5.5 * 60 * 60 * 1000;
               const istDate = new Date(now.getTime() + istOffset);
               const timeString = istDate.toISOString().replace('T', ' ').substring(0, 19) + ' IST';
-              const title = prNumber 
-                ? `❌ Code Quality Blocking Errors [PR #${prNumber}] - ${timeString}`
+              const title = contextTag 
+                ? `❌ Code Quality Blocking Errors ${contextTag} - ${timeString}`
                 : `❌ Code Quality Blocking Errors - ${timeString}`;
                 
               let enrichedBody = body;
@@ -267,35 +276,40 @@ jobs:
                 enrichedBody = `> **👤 Assigned PR Author:** @${prAuthor} (Automatically assigned for immediate review & remediation)  \n\n` + body;
               }
               
-              if (existingPrIssue) {
-                // UPDATE existing tracking issue for this PR (Zero duplicate spam)
-                console.log(`🔄 Updating existing Issue #${existingPrIssue.number} for PR #${prNumber} on commit ${commitSha}...`);
+              const issueLabels = ['code-quality-violation'];
+              if (contextLabel) issueLabels.push(contextLabel);
+
+              if (existingLivingIssue) {
+                // UPDATE existing tracking issue (Living Issue Deduplication)
+                console.log(`🔄 Updating existing Issue #${existingLivingIssue.number} for ${contextTag || 'current run'} on commit ${commitSha}...`);
                 try {
                   await github.rest.issues.update({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    issue_number: existingPrIssue.number,
+                    issue_number: existingLivingIssue.number,
                     title: title,
-                    body: enrichedBody
+                    body: enrichedBody,
+                    labels: issueLabels
                   });
                   await github.rest.issues.createComment({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    issue_number: existingPrIssue.number,
-                    body: `🔄 **New commit pushed (\`${commitSha}\`):** Code Quality check failed. Please see the updated summary in the issue description.`
+                    issue_number: existingLivingIssue.number,
+                    body: `🔄 **New commit pushed (\`${commitSha}\`):** Code Quality Gate re-evaluated. Critical blocking errors are still present. Please see the updated summary above.`
                   });
-                  console.log(`✅ Successfully updated Issue #${existingPrIssue.number} with latest commit error report.`);
+                  console.log(`✅ Successfully updated Issue #${existingLivingIssue.number} with latest commit error report.`);
                 } catch (updateErr) {
                   console.log('⚠️ Could not update existing issue:', updateErr.message);
                 }
               } else {
-                // CREATE initial tracking issue for this PR
+                // CREATE initial living issue
                 console.log(`🚀 Creating initial GitHub Issue for blocking errors: ${title}`);
                 const issuePayload = {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   title: title,
-                  body: enrichedBody
+                  body: enrichedBody,
+                  labels: issueLabels
                 };
                 if (prAuthor) {
                   issuePayload.assignees = [prAuthor];
@@ -325,19 +339,21 @@ jobs:
               }
             } else {
               console.log('✅ 0 critical blocking errors detected in this commit/PR (Quality Gate passed).');
-              console.log('🔍 Checking for open blocking error issues strictly related to this PR / modified files to auto-close...');
+              console.log('🔍 Checking for open blocking error issues strictly related to this PR / branch / modified files to auto-close...');
               
               const matchingIssues = openIssues.filter(issue => {
                 const title = issue.title || '';
                 const issueBody = issue.body || '';
-                const isQualityIssue = title.includes('Code Quality Blocking Errors') || title.includes('❌') || issueBody.includes('Critical Blocking Errors');
+                const issueLabels = (issue.labels || []).map(l => typeof l === 'string' ? l : l.name);
+                const isQualityIssue = issueLabels.includes('code-quality-violation') ||
+                                       title.includes('Code Quality Blocking Errors') || 
+                                       title.includes('❌') || 
+                                       issueBody.includes('Critical Blocking Errors');
                 if (!isQualityIssue) return false;
                 
-                // Match 1: Explicitly tagged for this specific PR
-                if (prNumber) {
-                  const isThisPr = title.includes(`[PR #${prNumber}]`) || issueBody.includes(`PR #${prNumber}`) || issueBody.includes(`pull/${prNumber}`);
-                  if (isThisPr) return true;
-                }
+                // Match 1: Explicitly tagged for this specific PR or branch
+                if (contextLabel && issueLabels.includes(contextLabel)) return true;
+                if (contextTag && (title.includes(contextTag) || issueBody.includes(contextTag))) return true;
                 
                 // Match 2: Specifically targets a file that was modified & verified clean in this PR
                 if (modifiedFiles.length > 0) {
@@ -348,7 +364,7 @@ jobs:
                   if (touchesModifiedFile) return true;
                 }
                 
-                // On direct main branch pushes with 0 errors (full repo verified clean), close open quality issues
+                // Match 3: On direct main branch pushes with 0 errors (full repo verified clean), close open quality issues
                 if (!prNumber && (context.ref === 'refs/heads/main' || context.ref === 'refs/heads/master')) {
                   return true;
                 }
