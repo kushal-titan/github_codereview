@@ -2,7 +2,7 @@ name: "Automated Code Quality Monitor"
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, review_requested]
   push:
     branches:
       - main
@@ -44,22 +44,70 @@ jobs:
           dotnet restore src/CodeMonitor/CodeMonitor.csproj
           dotnet build src/CodeMonitor/CodeMonitor.csproj -c Release
 
-      - name: 🔍 Resolve PR Author Email
-        id: resolve_author
-        run: |
-          # 1. Try to get author email from the latest commit in the PR branch
-          COMMIT_EMAIL=$(git log -1 --format='%ae')
-          COMMIT_NAME=$(git log -1 --format='%an')
-          echo "Detected Commit Author: $COMMIT_NAME <$COMMIT_EMAIL>"
-          
-          # Fallback to GitHub event author if available
-          AUTHOR_EMAIL="${COMMIT_EMAIL}"
-          if [ -z "$AUTHOR_EMAIL" ] || [ "$AUTHOR_EMAIL" = "null" ]; then
-            AUTHOR_EMAIL="${{ github.event.pull_request.user.email || github.event.pusher.email }}"
-          fi
-          
-          echo "Target PR Author Mail: $AUTHOR_EMAIL"
-          echo "email=$AUTHOR_EMAIL" >> $GITHUB_OUTPUT
+      - name: 🔍 Resolve PR Author & Reviewers' Emails
+        id: resolve_recipients
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            
+            // 1. Resolve PR Author Email
+            let commitEmail = '';
+            try {
+              commitEmail = execSync("git log -1 --format='%ae'").toString().trim();
+            } catch (e) {
+              console.log('Notice reading git log:', e.message);
+            }
+            
+            let prAuthorEmail = commitEmail;
+            if (!prAuthorEmail || prAuthorEmail === 'null' || !prAuthorEmail.includes('@')) {
+              prAuthorEmail = context.payload.pull_request?.user?.email || context.payload.pusher?.email || '';
+            }
+            if (!prAuthorEmail || prAuthorEmail === 'null') {
+              const actorLogin = context.payload.pull_request?.user?.login || context.actor || '';
+              if (actorLogin) {
+                prAuthorEmail = `${actorLogin.toLowerCase()}@titan.co.in`;
+              }
+            }
+            
+            console.log(`👤 Resolved PR Author Mail: ${prAuthorEmail}`);
+            core.setOutput('author_email', prAuthorEmail);
+            
+            // 2. Resolve Requested Reviewers
+            const requestedReviewers = context.payload.pull_request?.requested_reviewers || [];
+            const reviewerHandles = [];
+            const reviewerEmails = [];
+            
+            for (const reviewer of requestedReviewers) {
+              const handle = reviewer.login;
+              reviewerHandles.push(handle);
+              let foundEmail = '';
+              try {
+                const userRes = await github.rest.users.getByUsername({ username: handle });
+                if (userRes.data && userRes.data.email) {
+                  foundEmail = userRes.data.email.trim();
+                }
+              } catch (err) {
+                console.log(`Notice fetching user profile for ${handle}:`, err.message);
+              }
+              
+              if (!foundEmail) {
+                // Corporate domain fallback for Titan organization members
+                foundEmail = `${handle.toLowerCase()}@titan.co.in`;
+              }
+              
+              if (foundEmail && !reviewerEmails.includes(foundEmail)) {
+                reviewerEmails.push(foundEmail);
+              }
+            }
+            
+            const handlesStr = reviewerHandles.join(', ');
+            const emailsStr = reviewerEmails.join(', ');
+            console.log(`👥 Requested Reviewers (${reviewerHandles.length}): ${handlesStr || 'None'}`);
+            console.log(`📬 Reviewers Email Addresses: ${emailsStr || 'None'}`);
+            
+            core.setOutput('reviewers_handles', handlesStr);
+            core.setOutput('reviewers_emails', emailsStr);
 
       - name: 🛡️ Run Quality Gate & AST Analyzer
         id: run_analyzer
@@ -69,26 +117,32 @@ jobs:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_AUTHOR_EMAIL: ${{ steps.resolve_author.outputs.email }}
+          PR_AUTHOR_EMAIL: ${{ steps.resolve_recipients.outputs.author_email }}
+          PR_REVIEWERS: ${{ steps.resolve_recipients.outputs.reviewers_handles }}
+          REVIEWERS_EMAILS: ${{ steps.resolve_recipients.outputs.reviewers_emails }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
           
           # Outlook / Microsoft 365 SMTP Credentials
           OUTLOOK_SENDER_EMAIL: ${{ secrets.OUTLOOK_SENDER_EMAIL }}
           OUTLOOK_APP_PASSWORD: ${{ secrets.OUTLOOK_APP_PASSWORD }}
           OUTLOOK_ADDITIONAL_RECIPIENTS: ${{ secrets.OUTLOOK_ADDITIONAL_RECIPIENTS }}
+          OUTLOOK_REVIEWERS_EMAILS: ${{ steps.resolve_recipients.outputs.reviewers_emails }}
           OUTLOOK_LEAD_EMAIL: ${{ secrets.OUTLOOK_LEAD_EMAIL }}
           OUTLOOK_MANAGER_EMAIL: ${{ secrets.OUTLOOK_MANAGER_EMAIL }}
           OUTLOOK_SMTP_SERVER: "smtp.office365.com"
           OUTLOOK_SMTP_PORT: 587
         run: |
           echo "Analyzing changes against base: $BASE_REF for PR Author: $PR_AUTHOR_EMAIL"
+          echo "Reviewers: $PR_REVIEWERS ($REVIEWERS_EMAILS)"
           echo "Workspace: $GITHUB_WORKSPACE"
           dotnet run --project src/CodeMonitor/CodeMonitor.csproj -c Release -f net8.0 --no-build -- \
             --path "$GITHUB_WORKSPACE" \
             --base-ref "$BASE_REF" \
             --pr-number "$PR_NUMBER" \
             --pr-url "$PR_URL" \
-            --pr-author "$PR_AUTHOR_EMAIL"
+            --pr-author "$PR_AUTHOR_EMAIL" \
+            --reviewers "$PR_REVIEWERS" \
+            --reviewers-emails "$REVIEWERS_EMAILS"
 
       - name: 💬 Post or Update PR Quality Comment
         if: always() && github.event_name == 'pull_request'

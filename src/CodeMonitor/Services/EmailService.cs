@@ -202,9 +202,13 @@ namespace CodeMonitor.Services
             sb.AppendLine($"<b>Commit:</b> <code>{report.CommitSha}</code> &bull; <b>Files Analyzed:</b> {report.AnalyzedFiles.Count}<br/>");
             DateTime istTime = GitHubReporter.GetIndianStandardTime(report.AnalysisTime);
             sb.AppendLine($"<b>Analysis Timestamp:</b> <code>{istTime:dd-MMM-yyyy hh:mm:ss tt} IST</code>");
+            if (report.Reviewers.Count > 0)
+            {
+                sb.AppendLine($"<br/><b>👥 Assigned Reviewers:</b> <code>{HttpUtility.HtmlEncode(string.Join(", ", report.Reviewers))}</code>");
+            }
             if (!string.IsNullOrWhiteSpace(additionalRecipients))
             {
-                sb.AppendLine($"<br/><b>CC (Lead / Reviewers):</b> <code>{HttpUtility.HtmlEncode(additionalRecipients)}</code>");
+                sb.AppendLine($"<br/><b>📬 CC / Delivery List:</b> <code>{HttpUtility.HtmlEncode(additionalRecipients)}</code>");
             }
             sb.AppendLine("</div>");
 

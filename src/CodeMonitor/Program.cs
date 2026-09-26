@@ -24,6 +24,8 @@ namespace CodeMonitor
             string prNumber = GetArgValue(args, "--pr-number") ?? Environment.GetEnvironmentVariable("PR_NUMBER") ?? "";
             string prUrl = GetArgValue(args, "--pr-url") ?? Environment.GetEnvironmentVariable("PR_URL") ?? "";
             string prAuthorEmail = GetArgValue(args, "--pr-author") ?? Environment.GetEnvironmentVariable("PR_AUTHOR_EMAIL") ?? "";
+            string rawReviewers = GetArgValue(args, "--reviewers", "--reviewers-handles") ?? Environment.GetEnvironmentVariable("PR_REVIEWERS") ?? "";
+            string rawReviewerEmails = GetArgValue(args, "--reviewers-emails") ?? Environment.GetEnvironmentVariable("REVIEWERS_EMAILS") ?? Environment.GetEnvironmentVariable("OUTLOOK_REVIEWERS_EMAILS") ?? "";
             bool dryRun = args.Contains("--dry-run") || bool.TryParse(Environment.GetEnvironmentVariable("DRY_RUN"), out var dr) && dr;
 
             var config = QualityConfig.Load(targetDir);
@@ -56,11 +58,15 @@ namespace CodeMonitor
             };
 
             // Retrieve Git and environment metadata
-            var report = InitializeReport(targetDir, baseRef, prNumber, prUrl, prAuthorEmail);
+            var report = InitializeReport(targetDir, baseRef, prNumber, prUrl, prAuthorEmail, rawReviewers, rawReviewerEmails);
 
             Console.WriteLine($"Repository: {report.Repository}");
             Console.WriteLine($"Branch/Ref: {report.Branch}");
             Console.WriteLine($"Commit SHA: {report.CommitSha}");
+            if (report.Reviewers.Count > 0)
+            {
+                Console.WriteLine($"Assigned Reviewers: {string.Join(", ", report.Reviewers)}");
+            }
             Console.WriteLine($"Base Ref for Diff: {baseRef ?? "None (Full Scan Mode)"}");
 
             // 1. Get changed files and lines via git diff
@@ -147,13 +153,20 @@ namespace CodeMonitor
                     }
                 }
 
-                CollectEmails(GetArgValue(args, "--additional-recipients", "--cc", "--lead", "--manager", "--lead-email", "--manager-email"));
+                CollectEmails(GetArgValue(args, "--additional-recipients", "--cc", "--lead", "--manager", "--lead-email", "--manager-email", "--reviewers", "--reviewers-emails"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_ADDITIONAL_RECIPIENTS"));
+                CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_REVIEWERS_EMAILS"));
+                CollectEmails(Environment.GetEnvironmentVariable("REVIEWERS_EMAILS"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_LEAD_EMAIL"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_MANAGER_EMAIL"));
                 CollectEmails(Environment.GetEnvironmentVariable("OUTLOOK_CC_EMAILS"));
                 CollectEmails(Environment.GetEnvironmentVariable("LEAD_EMAIL"));
                 CollectEmails(Environment.GetEnvironmentVariable("MANAGER_EMAIL"));
+
+                foreach (var revEmail in report.ReviewerEmails)
+                {
+                    CollectEmails(revEmail);
+                }
 
                 if (config.AdditionalRecipients != null)
                 {
@@ -168,7 +181,7 @@ namespace CodeMonitor
                 int.TryParse(Environment.GetEnvironmentVariable("OUTLOOK_SMTP_PORT") ?? "587", out int smtpPort);
 
                 Console.WriteLine($"[Email Dispatch] Primary Recipient: {recipientEmail ?? "None"}");
-                Console.WriteLine($"[Email Dispatch] Lead / Manager Recipients: {additionalRecipients ?? "None"}");
+                Console.WriteLine($"[Email Dispatch] Reviewers / Lead / Manager Recipients: {additionalRecipients ?? "None"}");
 
                 emailService.SendReport(report, senderEmail, appPassword, recipientEmail, additionalRecipients, smtpServer, smtpPort);
             }
@@ -188,7 +201,7 @@ namespace CodeMonitor
             return 0;
         }
 
-        private static AnalysisReport InitializeReport(string targetDir, string? baseRef, string prNumber, string prUrl, string prAuthorEmail)
+        private static AnalysisReport InitializeReport(string targetDir, string? baseRef, string prNumber, string prUrl, string prAuthorEmail, string rawReviewers = "", string rawReviewerEmails = "")
         {
             string resolvedAuthorEmail = prAuthorEmail;
             if (string.IsNullOrWhiteSpace(resolvedAuthorEmail))
@@ -210,6 +223,32 @@ namespace CodeMonitor
                 PullRequestNumber = prNumber,
                 PullRequestUrl = prUrl
             };
+
+            if (!string.IsNullOrWhiteSpace(rawReviewers))
+            {
+                var revs = rawReviewers.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var r in revs)
+                {
+                    var clean = r.Trim();
+                    if (!string.IsNullOrWhiteSpace(clean) && !report.Reviewers.Contains(clean, StringComparer.OrdinalIgnoreCase))
+                    {
+                        report.Reviewers.Add(clean);
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(rawReviewerEmails))
+            {
+                var emails = rawReviewerEmails.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var e in emails)
+                {
+                    var clean = e.Trim();
+                    if (!string.IsNullOrWhiteSpace(clean) && clean.Contains("@") && !report.ReviewerEmails.Contains(clean, StringComparer.OrdinalIgnoreCase))
+                    {
+                        report.ReviewerEmails.Add(clean);
+                    }
+                }
+            }
 
             return report;
         }

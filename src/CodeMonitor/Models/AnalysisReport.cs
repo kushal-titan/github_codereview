@@ -14,6 +14,8 @@ namespace CodeMonitor.Models
         public string AuthorEmail { get; set; } = string.Empty;
         public string PullRequestNumber { get; set; } = string.Empty;
         public string PullRequestUrl { get; set; } = string.Empty;
+        public List<string> Reviewers { get; set; } = new List<string>();
+        public List<string> ReviewerEmails { get; set; } = new List<string>();
         public DateTime AnalysisTime { get; set; } = DateTime.UtcNow;
 
         public List<string> AnalyzedFiles { get; set; } = new List<string>();
