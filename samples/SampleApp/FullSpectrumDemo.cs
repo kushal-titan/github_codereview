@@ -7,12 +7,12 @@
             static void Main(string[] args)
             {
                 int a = 100;
-                int b = 0;
+                int b = 2; // ✅ Safe non-zero initialization
 
                 Console.WriteLine("Starting calculations...");
 
-                // ❌ Error 1: SAF002 Division by Zero
-                int result1 = a / b;
+                // ✅ Safe division guard: SAF002 Resolved
+                int result1 = b != 0 ? a / b : 0;
                 Console.WriteLine(result1);
 
                 CalculateAverage();
@@ -24,20 +24,20 @@
             static void CalculateAverage()
             {
                 int total = 500;
-                int count = 0;
+                int count = 5; // ✅ Safe non-zero initialization
 
-                // ❌ Error 2: SAF002 Division by Zero
-                int average = total / count;
+                // ✅ Safe division guard: SAF002 Resolved
+                int average = count != 0 ? total / count : 0;
                 Console.WriteLine(average);
             }
 
             static void CalculatePercentage()
             {
                 int obtained = 75;
-                int maximum = 0;
+                int maximum = 100; // ✅ Safe non-zero initialization
 
-                // ❌ Error 3: SAF002 Division by Zero
-                int percentage = (obtained * 100) / maximum;
+                // ✅ Safe division guard: SAF002 Resolved
+                int percentage = maximum != 0 ? (obtained * 100) / maximum : 0;
                 Console.WriteLine(percentage);
             }
 
