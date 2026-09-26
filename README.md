@@ -234,13 +234,6 @@ github_codereview/
 │       │   └── EmailService.cs       # MailKit/MimeKit Office 365 SMTP dispatcher
 │       ├── Program.cs                # CLI Entry Point & Orchestrator
 │       └── CodeMonitor.csproj        # .NET 8 LTS project manifest
-├── samples/
-│   └── SampleApp/                    # Demo suite showcasing clean code & violations
-│       ├── SampleApp.csproj
-│       ├── OrderService.cs           # Clean production service
-│       ├── InvoiceProcessor.cs       # Clean production invoice workflow
-│       ├── DivisionByZeroSample.cs   # Clean mathematical calculations
-│       └── FullSpectrumDemo.cs       # Comprehensive 6-category demo suite
 ├── .gitignore
 └── README.md
 ```
