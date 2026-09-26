@@ -24,10 +24,10 @@ namespace DivisionByZeroSample
         static void CalculateAverage()
         {
             int total = 500;
-            int count = 0;
+            int count = 5;
 
-            // ❌ Error 2: SAF002 Division by Zero
-            int average = total / count;
+            // ✅ Safe Calculation (Resolved)
+            int average = count != 0 ? total / count : 0;
             Console.WriteLine(average);
         }
 
