@@ -277,7 +277,8 @@ jobs:
                 const { data: openIssues } = await github.rest.issues.listForRepo({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  state: 'open'
+                  state: 'open',
+                  per_page: 100
                 });
                 
                 const matchingIssues = openIssues.filter(issue => {
