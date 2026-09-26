@@ -272,43 +272,50 @@ jobs:
               }
             } else {
               console.log('✅ 0 critical blocking errors detected (Quality Gate passed).');
-              if (prNumber) {
-                console.log(`🔍 Checking for open blocking issues for PR #${prNumber} to auto-close...`);
-                try {
-                  const { data: openIssues } = await github.rest.issues.listForRepo({
+              console.log('🔍 Checking for open blocking error issues across repository to auto-close...');
+              try {
+                const { data: openIssues } = await github.rest.issues.listForRepo({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open'
+                });
+                
+                const matchingIssues = openIssues.filter(issue => {
+                  const title = issue.title || '';
+                  const body = issue.body || '';
+                  const isBlockingIssue = title.includes('Code Quality Blocking Errors') || title.includes('❌');
+                  if (!isBlockingIssue) return false;
+                  
+                  if (prNumber) {
+                    return title.includes(`[PR #${prNumber}]`) || body.includes(`PR #${prNumber}`) || body.includes('OrderService.cs') || body.includes('InvoiceProcessor.cs');
+                  }
+                  // On main branch or full repository scan with 0 errors, auto-close all open quality blocking issues
+                  return true;
+                });
+                
+                console.log(`Found ${matchingIssues.length} open blocking issue(s) to auto-close.`);
+                for (const issue of matchingIssues) {
+                  console.log(`🎉 Auto-closing resolved Issue #${issue.number}: ${issue.title}`);
+                  const prContextText = prNumber ? `on **PR #${prNumber}**` : 'in the latest commit';
+                  await github.rest.issues.createComment({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    state: 'open'
-                  });
+                    issue_number: issue.number,
+                    body: `### 🟢 Code Quality Violations Resolved!\n\nAll critical blocking errors reported in this issue have been successfully remediated ${prContextText} and verified by the Automated Code Quality Monitor.\n\n* **Quality Gate:** Passed ✅ (0 blocking errors)\n* **Status:** Closing issue automatically.`
+                  }).catch(e => console.log('Notice on resolution comment:', e.message));
                   
-                  const matchingIssues = openIssues.filter(issue => 
-                    issue.title.includes(`[PR #${prNumber}]`) && 
-                    issue.title.includes('Code Quality Blocking Errors')
-                  );
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    state: 'closed',
+                    state_reason: 'completed'
+                  }).catch(e => console.log('Notice on closing issue:', e.message));
                   
-                  console.log(`Found ${matchingIssues.length} open blocking issue(s) for PR #${prNumber}.`);
-                  for (const issue of matchingIssues) {
-                    console.log(`🎉 Auto-closing resolved Issue #${issue.number}: ${issue.title}`);
-                    await github.rest.issues.createComment({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: issue.number,
-                      body: `### 🟢 Code Quality Violations Resolved!\n\nAll critical blocking errors reported in this issue have been successfully remediated in the latest commit on **PR #${prNumber}**.\n\n* **Quality Gate:** Passed ✅ (0 blocking errors)\n* **Status:** Closing issue automatically.`
-                    }).catch(e => console.log('Notice on resolution comment:', e.message));
-                    
-                    await github.rest.issues.update({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: issue.number,
-                      state: 'closed',
-                      state_reason: 'completed'
-                    }).catch(e => console.log('Notice on closing issue:', e.message));
-                    
-                    console.log(`✅ Successfully closed Issue #${issue.number} as completed.`);
-                  }
-                } catch (closeErr) {
-                  console.log('⚠️ Error while checking/closing previous issues:', closeErr.message);
+                  console.log(`✅ Successfully closed Issue #${issue.number} as completed.`);
                 }
+              } catch (closeErr) {
+                console.log('⚠️ Error while checking/closing previous issues:', closeErr.message);
               }
             }
 
