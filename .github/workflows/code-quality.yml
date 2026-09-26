@@ -2,7 +2,7 @@ name: "Automated Code Quality Monitor"
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, review_requested]
+    types: [opened, synchronize, reopened, review_requested, closed]
   push:
     branches:
       - main
@@ -186,88 +186,130 @@ jobs:
               }
             }
 
-      - name: 📋 File GitHub Issue for Blocking Errors
+      - name: 📋 File or Auto-Close GitHub Issue for Blocking Errors
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const errorFile = 'issues/latest_errors.md';
+            const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
+            
+            let hasErrors = false;
+            let body = '';
             if (fs.existsSync(errorFile)) {
-              const body = fs.readFileSync(errorFile, 'utf8');
+              body = fs.readFileSync(errorFile, 'utf8');
               if (body.includes('Summary of Critical Blocking Errors') || body.includes('Action Required') || body.includes('❌ **Error**')) {
-                const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
+                hasErrors = true;
+              }
+            }
+            
+            if (hasErrors) {
+              let prAuthor = '';
+              if (context.payload.pull_request && context.payload.pull_request.user && context.payload.pull_request.user.login) {
+                prAuthor = context.payload.pull_request.user.login;
+              } else if (context.actor) {
+                prAuthor = context.actor;
+              } else if (context.payload.sender && context.payload.sender.login) {
+                prAuthor = context.payload.sender.login;
+              }
+              prAuthor = (prAuthor || '').trim();
+              
+              const now = new Date();
+              const istOffset = 5.5 * 60 * 60 * 1000;
+              const istDate = new Date(now.getTime() + istOffset);
+              const timeString = istDate.toISOString().replace('T', ' ').substring(0, 19) + ' IST';
+              const title = prNumber 
+                ? `❌ Code Quality Blocking Errors [PR #${prNumber}] - ${timeString}`
+                : `❌ Code Quality Blocking Errors - ${timeString}`;
                 
-                let prAuthor = '';
-                if (context.payload.pull_request && context.payload.pull_request.user && context.payload.pull_request.user.login) {
-                  prAuthor = context.payload.pull_request.user.login;
-                } else if (context.actor) {
-                  prAuthor = context.actor;
-                } else if (context.payload.sender && context.payload.sender.login) {
-                  prAuthor = context.payload.sender.login;
-                }
-                prAuthor = (prAuthor || '').trim();
-                
-                const now = new Date();
-                const istOffset = 5.5 * 60 * 60 * 1000;
-                const istDate = new Date(now.getTime() + istOffset);
-                const timeString = istDate.toISOString().replace('T', ' ').substring(0, 19) + ' IST';
-                const title = prNumber 
-                  ? `❌ Code Quality Blocking Errors [PR #${prNumber}] - ${timeString}`
-                  : `❌ Code Quality Blocking Errors - ${timeString}`;
-                  
-                console.log(`🚀 Creating GitHub Issue for blocking errors: ${title}`);
-                console.log(`👤 Assignee (PR Author): ${prAuthor || 'None'}`);
-                
-                let enrichedBody = body;
+              console.log(`🚀 Creating GitHub Issue for blocking errors: ${title}`);
+              console.log(`👤 Assignee (PR Author): ${prAuthor || 'None'}`);
+              
+              let enrichedBody = body;
+              if (prAuthor) {
+                enrichedBody = `> **👤 Assigned PR Author:** @${prAuthor} (Automatically assigned for immediate review & remediation)  \n\n` + body;
+              }
+              
+              const issuePayload = {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: enrichedBody
+              };
+              if (prAuthor) {
+                issuePayload.assignees = [prAuthor];
+              }
+              
+              try {
+                const issue = await github.rest.issues.create(issuePayload);
+                console.log(`✅ Successfully created GitHub Issue #${issue.data.number} assigned to @${prAuthor}: ${issue.data.html_url}`);
                 if (prAuthor) {
-                  enrichedBody = `> **👤 Assigned PR Author:** @${prAuthor} (Automatically assigned for immediate review & remediation)  \n\n` + body;
+                  await github.rest.issues.addAssignees({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.data.number,
+                    assignees: [prAuthor]
+                  }).catch(e => console.log('Notice on addAssignees confirmation:', e.message));
                 }
-                
-                const issuePayload = {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title: title,
-                  body: enrichedBody
-                };
-                if (prAuthor) {
-                  issuePayload.assignees = [prAuthor];
-                }
-                
+              } catch (err) {
+                console.log('⚠️ Failed with assignees in create, attempting fallback creation:', err.message);
+                delete issuePayload.assignees;
                 try {
-                  const issue = await github.rest.issues.create(issuePayload);
-                  console.log(`✅ Successfully created GitHub Issue #${issue.data.number} assigned to @${prAuthor}: ${issue.data.html_url}`);
+                  const fallbackIssue = await github.rest.issues.create(issuePayload);
+                  console.log(`✅ Created fallback GitHub Issue #${fallbackIssue.data.number}: ${fallbackIssue.data.html_url}`);
                   if (prAuthor) {
                     await github.rest.issues.addAssignees({
                       owner: context.repo.owner,
                       repo: context.repo.repo,
-                      issue_number: issue.data.number,
+                      issue_number: fallbackIssue.data.number,
                       assignees: [prAuthor]
-                    }).catch(e => console.log('Notice on addAssignees confirmation:', e.message));
+                    }).catch(e => console.log('Fallback addAssignees notice:', e.message));
                   }
-                } catch (err) {
-                  console.log('⚠️ Failed with assignees in create, attempting fallback creation:', err.message);
-                  delete issuePayload.assignees;
-                  try {
-                    const fallbackIssue = await github.rest.issues.create(issuePayload);
-                    console.log(`✅ Created fallback GitHub Issue #${fallbackIssue.data.number}: ${fallbackIssue.data.html_url}`);
-                    if (prAuthor) {
-                      await github.rest.issues.addAssignees({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        issue_number: fallbackIssue.data.number,
-                        assignees: [prAuthor]
-                      }).catch(e => console.log('Fallback addAssignees notice:', e.message));
-                    }
-                  } catch (fallbackErr) {
-                    console.log('❌ Could not create GitHub Issue:', fallbackErr.message);
-                  }
+                } catch (fallbackErr) {
+                  console.log('❌ Could not create GitHub Issue:', fallbackErr.message);
                 }
-              } else {
-                console.log('✅ 0 critical blocking errors detected in issues/latest_errors.md. Skipping issue creation.');
               }
             } else {
-              console.log('ℹ️ No issues/latest_errors.md found.');
+              console.log('✅ 0 critical blocking errors detected (Quality Gate passed).');
+              if (prNumber) {
+                console.log(`🔍 Checking for open blocking issues for PR #${prNumber} to auto-close...`);
+                try {
+                  const { data: openIssues } = await github.rest.issues.listForRepo({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    state: 'open'
+                  });
+                  
+                  const matchingIssues = openIssues.filter(issue => 
+                    issue.title.includes(`[PR #${prNumber}]`) && 
+                    issue.title.includes('Code Quality Blocking Errors')
+                  );
+                  
+                  console.log(`Found ${matchingIssues.length} open blocking issue(s) for PR #${prNumber}.`);
+                  for (const issue of matchingIssues) {
+                    console.log(`🎉 Auto-closing resolved Issue #${issue.number}: ${issue.title}`);
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      body: `### 🟢 Code Quality Violations Resolved!\n\nAll critical blocking errors reported in this issue have been successfully remediated in the latest commit on **PR #${prNumber}**.\n\n* **Quality Gate:** Passed ✅ (0 blocking errors)\n* **Status:** Closing issue automatically.`
+                    }).catch(e => console.log('Notice on resolution comment:', e.message));
+                    
+                    await github.rest.issues.update({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      state: 'closed',
+                      state_reason: 'completed'
+                    }).catch(e => console.log('Notice on closing issue:', e.message));
+                    
+                    console.log(`✅ Successfully closed Issue #${issue.number} as completed.`);
+                  }
+                } catch (closeErr) {
+                  console.log('⚠️ Error while checking/closing previous issues:', closeErr.message);
+                }
+              }
             }
 
       - name: 💾 Commit & Push Error Report to Branch
