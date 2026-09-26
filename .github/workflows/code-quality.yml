@@ -143,7 +143,16 @@ jobs:
               const body = fs.readFileSync(errorFile, 'utf8');
               if (body.includes('Summary of Critical Blocking Errors') || body.includes('Action Required') || body.includes('❌ **Error**')) {
                 const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
-                const prAuthor = context.payload.pull_request ? context.payload.pull_request.user.login : context.actor;
+                
+                let prAuthor = '';
+                if (context.payload.pull_request && context.payload.pull_request.user && context.payload.pull_request.user.login) {
+                  prAuthor = context.payload.pull_request.user.login;
+                } else if (context.actor) {
+                  prAuthor = context.actor;
+                } else if (context.payload.sender && context.payload.sender.login) {
+                  prAuthor = context.payload.sender.login;
+                }
+                prAuthor = (prAuthor || '').trim();
                 
                 const now = new Date();
                 const istOffset = 5.5 * 60 * 60 * 1000;
@@ -154,21 +163,36 @@ jobs:
                   : `❌ Code Quality Blocking Errors - ${timeString}`;
                   
                 console.log(`🚀 Creating GitHub Issue for blocking errors: ${title}`);
-                console.log(`👤 Assignee (PR Author): ${prAuthor}`);
+                console.log(`👤 Assignee (PR Author): ${prAuthor || 'None'}`);
+                
+                let enrichedBody = body;
+                if (prAuthor) {
+                  enrichedBody = `> **👤 Assigned PR Author:** @${prAuthor} (Automatically assigned for immediate review & remediation)  \n\n` + body;
+                }
                 
                 const issuePayload = {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   title: title,
-                  body: body,
-                  assignees: prAuthor ? [prAuthor] : []
+                  body: enrichedBody
                 };
+                if (prAuthor) {
+                  issuePayload.assignees = [prAuthor];
+                }
                 
                 try {
                   const issue = await github.rest.issues.create(issuePayload);
                   console.log(`✅ Successfully created GitHub Issue #${issue.data.number} assigned to @${prAuthor}: ${issue.data.html_url}`);
+                  if (prAuthor) {
+                    await github.rest.issues.addAssignees({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.data.number,
+                      assignees: [prAuthor]
+                    }).catch(e => console.log('Notice on addAssignees confirmation:', e.message));
+                  }
                 } catch (err) {
-                  console.log('⚠️ Failed with assignees in create, attempting fallback:', err.message);
+                  console.log('⚠️ Failed with assignees in create, attempting fallback creation:', err.message);
                   delete issuePayload.assignees;
                   try {
                     const fallbackIssue = await github.rest.issues.create(issuePayload);
@@ -179,8 +203,7 @@ jobs:
                         repo: context.repo.repo,
                         issue_number: fallbackIssue.data.number,
                         assignees: [prAuthor]
-                      });
-                      console.log(`✅ Added assignee @${prAuthor} via addAssignees.`);
+                      }).catch(e => console.log('Fallback addAssignees notice:', e.message));
                     }
                   } catch (fallbackErr) {
                     console.log('❌ Could not create GitHub Issue:', fallbackErr.message);
