@@ -272,7 +272,20 @@ jobs:
               }
             } else {
               console.log('✅ 0 critical blocking errors detected (Quality Gate passed).');
-              console.log('🔍 Checking for open blocking error issues across repository to auto-close...');
+              console.log('🔍 Checking for open blocking error issues strictly related to this PR / modified files...');
+              
+              // 1. Discover files modified in this PR/run
+              let modifiedFiles = [];
+              try {
+                const { execSync } = require('child_process');
+                const baseRef = process.env.BASE_REF || (context.payload.pull_request ? `origin/${context.payload.pull_request.base.ref}` : 'origin/main');
+                const diffOutput = execSync(`git diff --name-only ${baseRef} HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null`).toString();
+                modifiedFiles = diffOutput.split('\n').map(f => f.trim()).filter(Boolean);
+                console.log(`📁 Files modified in this PR/run (${modifiedFiles.length}):`, modifiedFiles);
+              } catch (e) {
+                console.log('Notice reading git diff for modified files:', e.message);
+              }
+              
               try {
                 const { data: openIssues } = await github.rest.issues.listForRepo({
                   owner: context.repo.owner,
@@ -284,25 +297,42 @@ jobs:
                 const matchingIssues = openIssues.filter(issue => {
                   const title = issue.title || '';
                   const body = issue.body || '';
-                  const isBlockingIssue = title.includes('Code Quality Blocking Errors') || title.includes('❌');
-                  if (!isBlockingIssue) return false;
+                  const isQualityIssue = title.includes('Code Quality Blocking Errors') || title.includes('❌') || body.includes('Critical Blocking Errors');
+                  if (!isQualityIssue) return false;
                   
+                  // Match 1: Explicitly tagged for this specific PR
                   if (prNumber) {
-                    return title.includes(`[PR #${prNumber}]`) || body.includes(`PR #${prNumber}`) || body.includes('OrderService.cs') || body.includes('InvoiceProcessor.cs');
+                    const isThisPr = title.includes(`[PR #${prNumber}]`) || body.includes(`PR #${prNumber}`) || body.includes(`pull/${prNumber}`);
+                    if (isThisPr) return true;
                   }
-                  // On main branch or full repository scan with 0 errors, auto-close all open quality blocking issues
-                  return true;
+                  
+                  // Match 2: Specifically targets a file that was modified & verified clean in this PR
+                  if (modifiedFiles.length > 0) {
+                    const touchesModifiedFile = modifiedFiles.some(file => {
+                      const fileName = file.split('/').pop().split('\\').pop();
+                      return fileName && fileName.endsWith('.cs') && (body.includes(file) || body.includes(fileName) || title.includes(fileName));
+                    });
+                    if (touchesModifiedFile) return true;
+                  }
+                  
+                  // On direct main branch pushes with 0 errors (full repo verified clean), close open quality issues
+                  if (!prNumber && (context.ref === 'refs/heads/main' || context.ref === 'refs/heads/master')) {
+                    return true;
+                  }
+                  
+                  return false;
                 });
                 
-                console.log(`Found ${matchingIssues.length} open blocking issue(s) to auto-close.`);
+                console.log(`Found ${matchingIssues.length} open blocking issue(s) matching this PR / modified files to auto-close.`);
                 for (const issue of matchingIssues) {
                   console.log(`🎉 Auto-closing resolved Issue #${issue.number}: ${issue.title}`);
-                  const prContextText = prNumber ? `on **PR #${prNumber}**` : 'in the latest commit';
+                  const prContextText = prNumber ? `on **PR #${prNumber}**` : 'in the latest verified commit';
+                  const filesContextText = modifiedFiles.length > 0 ? `\n* **Verified Files:** \`${modifiedFiles.join('`, `')}\`` : '';
                   await github.rest.issues.createComment({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     issue_number: issue.number,
-                    body: `### 🟢 Code Quality Violations Resolved!\n\nAll critical blocking errors reported in this issue have been successfully remediated ${prContextText} and verified by the Automated Code Quality Monitor.\n\n* **Quality Gate:** Passed ✅ (0 blocking errors)\n* **Status:** Closing issue automatically.`
+                    body: `### 🟢 Code Quality Violations Resolved!\n\nAll critical blocking errors reported in this issue have been successfully remediated ${prContextText} and verified by the Automated Code Quality Monitor with **0 errors**.\n${filesContextText}\n* **Quality Gate:** Passed ✅\n* **Status:** Closed as completed.`
                   }).catch(e => console.log('Notice on resolution comment:', e.message));
                   
                   await github.rest.issues.update({
