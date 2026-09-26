@@ -7,12 +7,12 @@ namespace DivisionByZeroSample
         static void Main(string[] args)
         {
             int a = 100;
-            int b = 2;
+            int b = 0;
 
             Console.WriteLine("Starting calculations...");
 
-            // Safe division guard
-            int result1 = b != 0 ? a / b : 0;
+            // ❌ Error 1: SAF002 Division by Zero
+            int result1 = a / b;
             Console.WriteLine(result1);
 
             CalculateAverage();
@@ -24,9 +24,10 @@ namespace DivisionByZeroSample
         static void CalculateAverage()
         {
             int total = 500;
-            int count = 5;
+            int count = 0;
 
-            int average = count != 0 ? total / count : 0;
+            // ❌ Error 2: SAF002 Division by Zero
+            int average = total / count;
             Console.WriteLine(average);
         }
 
@@ -35,6 +36,7 @@ namespace DivisionByZeroSample
             int obtained = 75;
             int maximum = 100;
 
+            // ✅ Safe Calculation
             int percentage = maximum != 0 ? (obtained * 100) / maximum : 0;
             Console.WriteLine(percentage);
         }
@@ -44,6 +46,7 @@ namespace DivisionByZeroSample
             int records = 250;
             int groups = 10;
 
+            // ✅ Safe Calculation
             int perGroup = groups != 0 ? records / groups : 0;
             Console.WriteLine(perGroup);
 
@@ -55,6 +58,7 @@ namespace DivisionByZeroSample
             int value = 900;
             int divisor = 3;
 
+            // ✅ Safe Calculation
             int output = divisor != 0 ? value / divisor : 0;
             Console.WriteLine(output);
         }
@@ -64,6 +68,7 @@ namespace DivisionByZeroSample
             int x = 40;
             int y = 4;
 
+            // ✅ Safe Calculation
             int ratio = y != 0 ? x / y : 0;
             Console.WriteLine(ratio);
 
@@ -75,6 +80,7 @@ namespace DivisionByZeroSample
             int numerator = 1000;
             int denominator = 10;
 
+            // ✅ Safe Calculation
             int result = denominator != 0 ? numerator / denominator : 0;
             Console.WriteLine(result);
 
@@ -86,12 +92,14 @@ namespace DivisionByZeroSample
             int sales = 5000;
             int months = 12;
 
+            // ✅ Safe Calculation
             int monthlySales = months != 0 ? sales / months : 0;
             Console.WriteLine(monthlySales);
 
             int distance = 100;
             int time = 2;
 
+            // ✅ Safe Calculation
             int speed = time != 0 ? distance / time : 0;
             Console.WriteLine(speed);
         }
