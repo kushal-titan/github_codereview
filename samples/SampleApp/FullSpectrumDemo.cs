@@ -7,12 +7,11 @@ namespace DivisionByZeroSample
         static void Main(string[] args)
         {
             int a = 100;
-            int b = 0;
+            int b = 2;
 
             Console.WriteLine("Starting calculations...");
 
-            
-            int result1 = a / b;
+            int result1 = b != 0 ? a / b : 0;
             Console.WriteLine(result1);
 
             CalculateAverage();
@@ -24,30 +23,27 @@ namespace DivisionByZeroSample
         static void CalculateAverage()
         {
             int total = 500;
-            int count = 0;
+            int count = 5;
 
-            
-            int average = total / count;
+            int average = count != 0 ? total / count : 0;
             Console.WriteLine(average);
         }
 
         static void CalculatePercentage()
         {
             int obtained = 75;
-            int maximum = 0;
+            int maximum = 100;
 
-            
-            int percentage = (obtained * 100) / maximum;
+            int percentage = maximum != 0 ? (obtained * 100) / maximum : 0;
             Console.WriteLine(percentage);
         }
 
         static void ProcessData()
         {
             int records = 250;
-            int groups = 0;
+            int groups = 10;
 
-
-            int perGroup = records / groups;
+            int perGroup = groups != 0 ? records / groups : 0;
             Console.WriteLine(perGroup);
 
             MoreProcessing();
@@ -56,20 +52,18 @@ namespace DivisionByZeroSample
         static void MoreProcessing()
         {
             int value = 900;
-            int divisor = 0;
+            int divisor = 3;
 
-        
-            int output = value / divisor;
+            int output = divisor != 0 ? value / divisor : 0;
             Console.WriteLine(output);
         }
 
         static void ComputeRatio()
         {
             int x = 40;
-            int y = 0;
+            int y = 4;
 
-    
-            int ratio = x / y;
+            int ratio = y != 0 ? x / y : 0;
             Console.WriteLine(ratio);
 
             NestedCalculation();
@@ -78,10 +72,9 @@ namespace DivisionByZeroSample
         static void NestedCalculation()
         {
             int numerator = 1000;
-            int denominator = 0;
+            int denominator = 10;
 
-            
-            int result = numerator / denominator;
+            int result = denominator != 0 ? numerator / denominator : 0;
             Console.WriteLine(result);
 
             FinalCalculation();
@@ -90,17 +83,15 @@ namespace DivisionByZeroSample
         static void FinalCalculation()
         {
             int sales = 5000;
-            int months = 0;
+            int months = 12;
 
-            
-            int monthlySales = sales / months;
+            int monthlySales = months != 0 ? sales / months : 0;
             Console.WriteLine(monthlySales);
 
             int distance = 100;
-            int time = 0;
+            int time = 2;
 
-            
-            int speed = distance / time;
+            int speed = time != 0 ? distance / time : 0;
             Console.WriteLine(speed);
         }
     }
