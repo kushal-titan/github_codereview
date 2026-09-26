@@ -3,21 +3,21 @@ using System.Threading;
 
 namespace DeadlockSample
 {
-    class Program
+    internal class Program
     {
-        private static readonly object resourceA = new object();
-        private static readonly object resourceB = new object();
+        private static readonly object ResourceA = new();
+        private static readonly object ResourceB = new();
 
-        private static readonly object resourceX = new object();
-        private static readonly object resourceY = new object();
+        private static readonly object ResourceX = new();
+        private static readonly object ResourceY = new();
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            Thread t1 = new Thread(ProcessOne);
-            Thread t2 = new Thread(ProcessTwo);
+            Thread t1 = new(ProcessOne);
+            Thread t2 = new(ProcessTwo);
 
-            Thread t3 = new Thread(TaskOne);
-            Thread t4 = new Thread(TaskTwo);
+            Thread t3 = new(TaskOne);
+            Thread t4 = new(TaskTwo);
 
             t1.Start();
             t2.Start();
@@ -34,65 +34,65 @@ namespace DeadlockSample
             Console.WriteLine("Completed");
         }
 
-        static void ProcessOne()
+        private static void ProcessOne()
         {
-            lock (resourceA)
+            lock (ResourceA)
             {
-                Console.WriteLine("ProcessOne locked resourceA");
+                Console.WriteLine("ProcessOne locked ResourceA");
                 Thread.Sleep(100);
 
-                lock (resourceB)
+                lock (ResourceB)
                 {
-                    Console.WriteLine("ProcessOne locked resourceB");
+                    Console.WriteLine("ProcessOne locked ResourceB");
                 }
             }
         }
 
-        static void ProcessTwo()
+        private static void ProcessTwo()
         {
-            lock (resourceB)
+            lock (ResourceA)
             {
-                Console.WriteLine("ProcessTwo locked resourceB");
+                Console.WriteLine("ProcessTwo locked ResourceA");
                 Thread.Sleep(100);
 
-                lock (resourceA)
+                lock (ResourceB)
                 {
-                    Console.WriteLine("ProcessTwo locked resourceA");
+                    Console.WriteLine("ProcessTwo locked ResourceB");
                 }
             }
         }
 
-        static void TaskOne()
+        private static void TaskOne()
         {
-            lock (resourceX)
+            lock (ResourceX)
             {
-                Console.WriteLine("TaskOne locked resourceX");
+                Console.WriteLine("TaskOne locked ResourceX");
                 Thread.Sleep(100);
 
-                lock (resourceY)
+                lock (ResourceY)
                 {
-                    Console.WriteLine("TaskOne locked resourceY");
+                    Console.WriteLine("TaskOne locked ResourceY");
                     PerformWork();
                 }
             }
         }
 
-        static void TaskTwo()
+        private static void TaskTwo()
         {
-            lock (resourceY)
+            lock (ResourceX)
             {
-                Console.WriteLine("TaskTwo locked resourceY");
+                Console.WriteLine("TaskTwo locked ResourceX");
                 Thread.Sleep(100);
 
-                lock (resourceX)
+                lock (ResourceY)
                 {
-                    Console.WriteLine("TaskTwo locked resourceX");
+                    Console.WriteLine("TaskTwo locked ResourceY");
                     PerformWork();
                 }
             }
         }
 
-        static void PerformWork()
+        private static void PerformWork()
         {
             for (int i = 0; i < 5; i++)
             {
