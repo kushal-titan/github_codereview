@@ -1,107 +1,107 @@
-using System;
+ using System;
 
-namespace DivisionByZeroSample
-{
-    class Program
+    namespace DivisionByZeroSample
     {
-        static void Main(string[] args)
+        class Program
         {
-            int a = 100;
-            int b = 0;
+            static void Main(string[] args)
+            {
+                int a = 100;
+                int b = 0;
 
-            Console.WriteLine("Starting calculations...");
+                Console.WriteLine("Starting calculations...");
 
-            
-            int result1 = a / b;
-            Console.WriteLine(result1);
+                // ❌ Error 1: SAF002 Division by Zero
+                int result1 = a / b;
+                Console.WriteLine(result1);
 
-            CalculateAverage();
-            CalculatePercentage();
-            ProcessData();
-            ComputeRatio();
-        }
+                CalculateAverage();
+                CalculatePercentage();
+                ProcessData();
+                ComputeRatio();
+            }
 
-        static void CalculateAverage()
-        {
-            int total = 500;
-            int count = 0;
+            static void CalculateAverage()
+            {
+                int total = 500;
+                int count = 0;
 
-            
-            int average = total / count;
-            Console.WriteLine(average);
-        }
+                // ❌ Error 2: SAF002 Division by Zero
+                int average = total / count;
+                Console.WriteLine(average);
+            }
 
-        static void CalculatePercentage()
-        {
-            int obtained = 75;
-            int maximum = 0;
+            static void CalculatePercentage()
+            {
+                int obtained = 75;
+                int maximum = 0;
 
-            
-            int percentage = (obtained * 100) / maximum;
-            Console.WriteLine(percentage);
-        }
+                // ❌ Error 3: SAF002 Division by Zero
+                int percentage = (obtained * 100) / maximum;
+                Console.WriteLine(percentage);
+            }
 
-        static void ProcessData()
-        {
-            int records = 250;
-            int groups = 0;
+            static void ProcessData()
+            {
+                int records = 250;
+                int groups = 10;
 
+                // ✅ Safe Calculation
+                int perGroup = groups != 0 ? records / groups : 0;
+                Console.WriteLine(perGroup);
 
-            int perGroup = records / groups;
-            Console.WriteLine(perGroup);
+                MoreProcessing();
+            }
 
-            MoreProcessing();
-        }
+            static void MoreProcessing()
+            {
+                int value = 900;
+                int divisor = 3;
 
-        static void MoreProcessing()
-        {
-            int value = 900;
-            int divisor = 0;
+                // ✅ Safe Calculation
+                int output = divisor != 0 ? value / divisor : 0;
+                Console.WriteLine(output);
+            }
 
-        
-            int output = value / divisor;
-            Console.WriteLine(output);
-        }
+            static void ComputeRatio()
+            {
+                int x = 40;
+                int y = 4;
 
-        static void ComputeRatio()
-        {
-            int x = 40;
-            int y = 0;
+                // ✅ Safe Calculation
+                int ratio = y != 0 ? x / y : 0;
+                Console.WriteLine(ratio);
 
-    
-            int ratio = x / y;
-            Console.WriteLine(ratio);
+                NestedCalculation();
+            }
 
-            NestedCalculation();
-        }
+            static void NestedCalculation()
+            {
+                int numerator = 1000;
+                int denominator = 10;
 
-        static void NestedCalculation()
-        {
-            int numerator = 1000;
-            int denominator = 0;
+                // ✅ Safe Calculation
+                int result = denominator != 0 ? numerator / denominator : 0;
+                Console.WriteLine(result);
 
-            
-            int result = numerator / denominator;
-            Console.WriteLine(result);
+                FinalCalculation();
+            }
 
-            FinalCalculation();
-        }
+            static void FinalCalculation()
+            {
+                int sales = 5000;
+                int months = 12;
 
-        static void FinalCalculation()
-        {
-            int sales = 5000;
-            int months = 0;
+                // ✅ Safe Calculation
+                int monthlySales = months != 0 ? sales / months : 0;
+                Console.WriteLine(monthlySales);
 
-            
-            int monthlySales = sales / months;
-            Console.WriteLine(monthlySales);
+                int distance = 100;
+                int time = 2;
 
-            int distance = 100;
-            int time = 0;
-
-            
-            int speed = distance / time;
-            Console.WriteLine(speed);
+                // ✅ Safe Calculation
+                int speed = time != 0 ? distance / time : 0;
+                Console.WriteLine(speed);
+            }
         }
     }
-}
