@@ -22,6 +22,12 @@ namespace SampleApp
             return $"Order #{orderId} Processed";
         }
 
+        // ✅ CON002 RESOLVED: Safe async Task returning method
+        public async Task ProcessNotificationAsync(string orderId, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+        }
+
         // ✅ SAF003 FIXED: Wrapped in 'using var' declarations for automatic disposal & file unlocking
         public void WriteOrderAuditLog(string orderId, string logMessage)
         {

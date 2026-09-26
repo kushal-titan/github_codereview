@@ -11,7 +11,7 @@ namespace DivisionByZeroSample
 
             Console.WriteLine("Starting calculations...");
 
-            // ✅ Safe Calculation
+            // ✅ Safe Calculation (Resolved)
             int result1 = b != 0 ? a / b : 0;
             Console.WriteLine(result1);
 
