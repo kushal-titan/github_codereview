@@ -16,7 +16,7 @@
                 Console.WriteLine(result1);
 
                 CalculateAverage();
-                CalculatePercentage();
+                CalculatePercentage();//hello//
                 ProcessData();
                 ComputeRatio();
             }
