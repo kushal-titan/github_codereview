@@ -1,84 +1,104 @@
 using System;
-using System.IO;
-using System.Net.Http;
 using System.Threading;
-using System.Threading.Tasks;
 
-namespace SampleApp
+namespace DeadlockSample
 {
-    public class ExternalOrderBridge
+    internal class Program
     {
-        private const int DefaultSimulationDelayMs = 50;
+        private static readonly object ResourceA = new();
+        private static readonly object ResourceB = new();
 
-        // Async method with CancellationToken support
-        public async Task<string> FetchOrderSummaryAsync(string orderId, CancellationToken cancellationToken = default)
+        private static readonly object ResourceX = new();
+        private static readonly object ResourceY = new();
+
+        private static void Main(string[] args)
         {
-            if (string.IsNullOrWhiteSpace(orderId))
-            {
-                throw new ArgumentException("Order ID cannot be null or empty.", nameof(orderId));
-            }
+            Thread t1 = new(ProcessOne);
+            Thread t2 = new(ProcessTwo);
 
-            await Task.Delay(DefaultSimulationDelayMs, cancellationToken).ConfigureAwait(false);
-            return $"Order #{orderId} Processed";
+            Thread t3 = new(TaskOne);
+            Thread t4 = new(TaskTwo);
+
+            t1.Start();
+            t2.Start();
+
+            t3.Start();
+            t4.Start();
+
+            t1.Join();
+            t2.Join();
+
+            t3.Join();
+            t4.Join();
+
+            Console.WriteLine("Completed");
         }
 
-        // ✅ SAF003 FIXED: Wrapped in 'using var' declarations for automatic disposal & file unlocking
-        public void WriteOrderAuditLog(string orderId, string logMessage)
+        private static void ProcessOne()
         {
-            if (string.IsNullOrWhiteSpace(orderId))
+            lock (ResourceA)
             {
-                throw new ArgumentException("Order ID cannot be null or empty.", nameof(orderId));
-            }
+                Console.WriteLine("ProcessOne locked ResourceA");
+                Thread.Sleep(100);
 
-            string filePath = $"order_{orderId}.log";
-            using var fileStream = new FileStream(filePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
-            using var writer = new StreamWriter(fileStream);
-            writer.WriteLine($"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC] {logMessage}");
+                lock (ResourceB)
+                {
+                    Console.WriteLine("ProcessOne locked ResourceB");
+                }
+            }
         }
 
-        // ✅ SAF003 FIXED: Async log reader with automatic 'using var' disposal
-        public async Task<string> ReadOrderAuditLogAsync(string orderId, CancellationToken cancellationToken = default)
+        private static void ProcessTwo()
         {
-            if (string.IsNullOrWhiteSpace(orderId))
+            lock (ResourceA)
             {
-                throw new ArgumentException("Order ID cannot be null or empty.", nameof(orderId));
+                Console.WriteLine("ProcessTwo locked ResourceA");
+                Thread.Sleep(100);
+
+                lock (ResourceB)
+                {
+                    Console.WriteLine("ProcessTwo locked ResourceB");
+                }
             }
-
-            string filePath = $"order_{orderId}.log";
-            if (!File.Exists(filePath))
-            {
-                return string.Empty;
-            }
-
-            using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(fileStream);
-            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    public class PaymentGatewayClient
-    {
-        private const int DefaultSimulationDelayMs = 50;
-        private static readonly Uri DefaultBaseEndpoint = new("https://api.titan.com/payments");
-        
-        // ✅ PERF004 FIXED: Reusable HttpClient instance prevents TCP socket exhaustion
-        private static readonly HttpClient _defaultHttpClient = new() { BaseAddress = DefaultBaseEndpoint };
-        private readonly HttpClient _httpClient;
-
-        public PaymentGatewayClient(HttpClient? httpClient = null)
-        {
-            _httpClient = httpClient ?? _defaultHttpClient;
         }
 
-        public async Task<string> ProcessPaymentAsync(string transactionId, CancellationToken cancellationToken = default)
+        private static void TaskOne()
         {
-            if (string.IsNullOrWhiteSpace(transactionId))
+            lock (ResourceX)
             {
-                throw new ArgumentException("Transaction ID cannot be null or empty.", nameof(transactionId));
-            }
+                Console.WriteLine("TaskOne locked ResourceX");
+                Thread.Sleep(100);
 
-            await Task.Delay(DefaultSimulationDelayMs, cancellationToken).ConfigureAwait(false);
-            return $"SUCCESS_{transactionId}";
+                lock (ResourceY)
+                {
+                    Console.WriteLine("TaskOne locked ResourceY");
+                    PerformWork();
+                }
+            }
+        }
+
+        private static void TaskTwo()
+        {
+            lock (ResourceX)
+            {
+                Console.WriteLine("TaskTwo locked ResourceX");
+                Thread.Sleep(100);
+
+                lock (ResourceY)
+                {
+                    Console.WriteLine("TaskTwo locked ResourceY");
+                    PerformWork();
+                }
+            }
+        }
+
+        private static void PerformWork()
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                Console.WriteLine($"Working... {i}");
+                Thread.Sleep(50);
+            }
         }
     }
 }
