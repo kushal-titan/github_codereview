@@ -22,11 +22,10 @@ namespace SampleApp
             return $"Order #{orderId} Processed";
         }
 
-        // ❌ Error: ASY001 Async Void Method
-        public async void ProcessNotificationAsync(string orderId)
+        // ✅ CON002 RESOLVED: Safe async Task returning method
+        public async Task ProcessNotificationAsync(string orderId, CancellationToken cancellationToken = default)
         {
-            await Task.Delay(50);
-            Console.WriteLine($"Notification sent for {orderId}");
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
         }
 
         // ✅ SAF003 FIXED: Wrapped in 'using var' declarations for automatic disposal & file unlocking

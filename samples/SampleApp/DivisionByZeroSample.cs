@@ -7,12 +7,12 @@ namespace DivisionByZeroSample
         static void Main(string[] args)
         {
             int a = 100;
-            int b = 0;
+            int b = 2;
 
             Console.WriteLine("Starting calculations...");
 
-            // ❌ Error: SAF002 Division by Zero
-            int result1 = a / b;
+            // ✅ Safe Calculation (Resolved)
+            int result1 = b != 0 ? a / b : 0;
             Console.WriteLine(result1);
 
             CalculateAverage();
