@@ -67,30 +67,56 @@ namespace CodeMonitor
             {
                 Console.WriteLine($"Assigned Reviewers: {string.Join(", ", report.Reviewers)}");
             }
-            Console.WriteLine($"Base Ref for Diff: {baseRef ?? "None (Full Scan Mode)"}");
+            bool isFullScanRequested = args.Contains("--full-scan") || (bool.TryParse(Environment.GetEnvironmentVariable("FULL_SCAN"), out var fs) && fs);
+            Console.WriteLine($"Base Ref for Diff: {baseRef ?? "None (HEAD~1)"}");
+            Console.WriteLine($"Scan Mode: {(isFullScanRequested ? "Full Repository Scan (--full-scan)" : "Differential PR/Commit Scan (Modified files only)")}");
 
             // 1. Get changed files and lines via git diff
-            var changedFilesMap = gitDiffService.GetChangedFilesAndLines(targetDir, baseRef);
             List<string> targetFiles;
+            Dictionary<string, HashSet<int>> changedFilesMap;
 
-            if (changedFilesMap.Count > 0)
+            if (isFullScanRequested)
             {
-                targetFiles = changedFilesMap.Keys
-                    .Where(File.Exists)
-                    .Where(f => !f.Replace('/', '\\').Contains(@"\CodeMonitor\"))
-                    .ToList();
-                Console.WriteLine($"\n[Git Diff] Detected {targetFiles.Count} modified C# file(s) for audit.");
-            }
-            else
-            {
-                Console.WriteLine("\n[Scan Mode] Analyzing application .cs files in directory tree...");
+                Console.WriteLine("\n[Scan Mode] Full repository scan requested explicitly...");
+                changedFilesMap = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
                 targetFiles = Directory.GetFiles(targetDir, "*.cs", SearchOption.AllDirectories)
                     .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") &&
                                 !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") &&
                                 !f.Contains($"{Path.DirectorySeparatorChar}.vs{Path.DirectorySeparatorChar}") &&
-                                !f.Replace('/', '\\').Contains(@"\CodeMonitor\"))
+                                !f.Replace('/', '\\').Contains(@"\CodeMonitor\") &&
+                                !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase) &&
+                                !f.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) &&
+                                !f.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase))
                     .ToList();
-                Console.WriteLine($"Found {targetFiles.Count} C# file(s) for analysis.");
+                Console.WriteLine($"Found {targetFiles.Count} C# file(s) for full repository analysis.");
+            }
+            else
+            {
+                // Strict differential mode: ONLY audit files changed in this specific commit or PR
+                changedFilesMap = gitDiffService.GetChangedFilesAndLines(targetDir, baseRef);
+                targetFiles = changedFilesMap.Keys
+                    .Where(File.Exists)
+                    .Where(f => !f.Replace('/', '\\').Contains(@"\CodeMonitor\"))
+                    .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
+                    .Where(f => !f.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase))
+                    .Where(f => !f.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (targetFiles.Count > 0)
+                {
+                    Console.WriteLine($"\n[Git Diff] Detected {targetFiles.Count} modified C# file(s) in this commit/PR for audit:");
+                    foreach (var f in targetFiles)
+                    {
+                        int linesCount = changedFilesMap.TryGetValue(f, out var lines) ? lines.Count : 0;
+                        string rel = Path.GetRelativePath(targetDir, f);
+                        Console.WriteLine($"  📄 {rel} ({linesCount} modified line(s))");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("\n[Git Diff] ℹ️ 0 modified C# application files detected in this commit/PR.");
+                    Console.WriteLine("[Git Diff] ✅ No modified C# files to audit. Quality Gate passed immediately.");
+                }
             }
 
             report.AnalyzedFiles = targetFiles;

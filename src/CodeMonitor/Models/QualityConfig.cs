@@ -60,31 +60,74 @@ namespace CodeMonitor.Models
                 }
 
                 string[] configNames = new[] { "code-quality.config.json", "codemonitor.json", ".codemonitor.json" };
+                string[] subfolders = new[] { "", "github_review", ".github" };
 
                 foreach (var dir in candidateDirs)
                 {
-                    foreach (var name in configNames)
+                    foreach (var sub in subfolders)
                     {
-                        string candidatePath = Path.Combine(dir, name);
-                        if (File.Exists(candidatePath))
+                        foreach (var name in configNames)
                         {
-                            string json = File.ReadAllText(candidatePath);
-                            var options = new JsonSerializerOptions
+                            string candidatePath = string.IsNullOrEmpty(sub)
+                                ? Path.Combine(dir, name)
+                                : Path.Combine(dir, sub, name);
+
+                            if (File.Exists(candidatePath))
                             {
-                                PropertyNameCaseInsensitive = true,
-                                AllowTrailingCommas = true,
-                                ReadCommentHandling = JsonCommentHandling.Skip
-                            };
-                            var loaded = JsonSerializer.Deserialize<QualityConfig>(json, options);
-                            if (loaded != null)
-                            {
-                                Console.WriteLine($"[Config] ✅ Successfully loaded custom quality settings from: {candidatePath}");
-                                if (loaded.AdditionalRecipients != null && loaded.AdditionalRecipients.Count > 0)
+                                string json = File.ReadAllText(candidatePath);
+                                var options = new JsonSerializerOptions
                                 {
-                                    Console.WriteLine($"[Config] 👥 Configured Additional Recipients: {string.Join(", ", loaded.AdditionalRecipients)}");
+                                    PropertyNameCaseInsensitive = true,
+                                    AllowTrailingCommas = true,
+                                    ReadCommentHandling = JsonCommentHandling.Skip
+                                };
+                                var loaded = JsonSerializer.Deserialize<QualityConfig>(json, options);
+                                if (loaded != null)
+                                {
+                                    Console.WriteLine($"[Config] ✅ Successfully loaded custom quality settings from: {candidatePath}");
+                                    if (loaded.AdditionalRecipients != null && loaded.AdditionalRecipients.Count > 0)
+                                    {
+                                        Console.WriteLine($"[Config] 👥 Configured Additional Recipients: {string.Join(", ", loaded.AdditionalRecipients)}");
+                                    }
+                                    return loaded;
                                 }
-                                return loaded;
                             }
+                        }
+                    }
+                }
+
+                // Fallback: search directory tree recursively if not found in standard candidate locations
+                foreach (var searchRoot in candidateDirs)
+                {
+                    if (Directory.Exists(searchRoot))
+                    {
+                        try
+                        {
+                            var foundFile = Directory.GetFiles(searchRoot, "code-quality.config.json", SearchOption.AllDirectories)
+                                .FirstOrDefault(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") &&
+                                                     !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") &&
+                                                     !f.Contains($"{Path.DirectorySeparatorChar}.vs{Path.DirectorySeparatorChar}"));
+
+                            if (foundFile != null && File.Exists(foundFile))
+                            {
+                                string json = File.ReadAllText(foundFile);
+                                var options = new JsonSerializerOptions
+                                {
+                                    PropertyNameCaseInsensitive = true,
+                                    AllowTrailingCommas = true,
+                                    ReadCommentHandling = JsonCommentHandling.Skip
+                                };
+                                var loaded = JsonSerializer.Deserialize<QualityConfig>(json, options);
+                                if (loaded != null)
+                                {
+                                    Console.WriteLine($"[Config] ✅ Successfully loaded custom quality settings from (recursive search): {foundFile}");
+                                    return loaded;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // ignore directory traversal permission exceptions
                         }
                     }
                 }

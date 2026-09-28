@@ -14,21 +14,53 @@ namespace CodeMonitor.Services
 
             try
             {
-                string diffArguments;
+                string output = "";
+
                 if (!string.IsNullOrWhiteSpace(baseRef))
                 {
-                    diffArguments = $"diff --unified=0 {baseRef}...HEAD";
-                }
-                else
-                {
-                    // Fallback to diffing against HEAD~1 or staged/working tree
-                    diffArguments = "diff --unified=0 HEAD~1 HEAD";
+                    // Strategy 1: Two-dot diff against base ref (e.g. origin/main HEAD or HEAD~1 HEAD)
+                    output = RunGitDiff(workingDirectory, $"diff --unified=0 {baseRef} HEAD");
+                    
+                    // Strategy 2: Three-dot diff (merge-base) if two-dot was empty
+                    if (string.IsNullOrWhiteSpace(output))
+                    {
+                        output = RunGitDiff(workingDirectory, $"diff --unified=0 {baseRef}...HEAD");
+                    }
                 }
 
+                // Strategy 3: Diff against parent commit HEAD~1
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    output = RunGitDiff(workingDirectory, "diff --unified=0 HEAD~1 HEAD");
+                }
+
+                // Strategy 4: Uncommitted / staged changes in working tree
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    output = RunGitDiff(workingDirectory, "diff --unified=0 HEAD");
+                }
+
+                if (!string.IsNullOrWhiteSpace(output))
+                {
+                    ParseUnifiedDiff(output, workingDirectory, result);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GitDiffService] Note: Git diff retrieval encountered: {ex.Message}.");
+            }
+
+            return result;
+        }
+
+        private static string RunGitDiff(string workingDirectory, string arguments)
+        {
+            try
+            {
                 var psi = new ProcessStartInfo
                 {
                     FileName = "git",
-                    Arguments = diffArguments,
+                    Arguments = arguments,
                     WorkingDirectory = workingDirectory,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -37,31 +69,16 @@ namespace CodeMonitor.Services
                 };
 
                 using var process = Process.Start(psi);
-                if (process == null) return result;
+                if (process == null) return "";
 
                 string output = process.StandardOutput.ReadToEnd();
                 process.WaitForExit();
-
-                if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                {
-                    // Fallback to unstaged/staged diff if previous commit diff failed
-                    psi.Arguments = "diff --unified=0 HEAD";
-                    using var fallbackProcess = Process.Start(psi);
-                    if (fallbackProcess != null)
-                    {
-                        output = fallbackProcess.StandardOutput.ReadToEnd();
-                        fallbackProcess.WaitForExit();
-                    }
-                }
-
-                ParseUnifiedDiff(output, workingDirectory, result);
+                return process.ExitCode == 0 ? output : "";
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"[GitDiffService] Note: Git diff retrieval encountered: {ex.Message}. Falling back to full file scanning.");
+                return "";
             }
-
-            return result;
         }
 
         private static void ParseUnifiedDiff(string diffOutput, string workingDirectory, Dictionary<string, HashSet<int>> result)

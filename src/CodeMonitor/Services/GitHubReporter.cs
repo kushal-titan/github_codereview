@@ -242,6 +242,15 @@ namespace CodeMonitor.Services
             {
                 try
                 {
+                    // GitHub Actions Job Summary max size is 1024 KB. We cap at 850 KB for safety.
+                    byte[] utf8Bytes = Encoding.UTF8.GetBytes(markdown);
+                    if (utf8Bytes.Length > 850 * 1024)
+                    {
+                        int safeLength = 800 * 1024;
+                        markdown = markdown.Substring(0, Math.Min(markdown.Length, safeLength)) 
+                            + "\n\n---\n> ⚠️ *Job summary truncated due to GitHub 1024KB limit. Download full detailed reports from the workflow artifacts or review `issues/latest_errors.md`.*";
+                    }
+
                     File.AppendAllText(summaryPath, markdown);
                     Console.WriteLine($"[GitHubReporter] Step summary written to {summaryPath}");
                 }
@@ -256,6 +265,14 @@ namespace CodeMonitor.Services
             {
                 string prCommentPath = Path.Combine(workingDirectory, "pr-comment.md");
                 string prCommentMarkdown = BuildMarkdownReport(report, workingDirectory, isPrComment: true);
+
+                // GitHub PR comment limit is 65,536 characters
+                if (prCommentMarkdown.Length > 60000)
+                {
+                    prCommentMarkdown = prCommentMarkdown.Substring(0, 58000)
+                        + "\n\n---\n> ⚠️ *PR comment truncated due to GitHub 65KB limit. View the full report in the **Actions Job Summary** and `issues/` directory.*";
+                }
+
                 File.WriteAllText(prCommentPath, prCommentMarkdown);
                 Console.WriteLine($"[GitHubReporter] PR comment written to {prCommentPath}");
             }
@@ -301,14 +318,46 @@ namespace CodeMonitor.Services
             }
 
             sb.AppendLine();
+            sb.AppendLine("### 📊 Metrics Breakdown");
+            sb.AppendLine();
+            sb.AppendLine($"- **Files Analyzed:** `{report.AnalyzedFiles.Count}`");
+            sb.AppendLine($"- **Critical Blocking Errors:** `{report.ErrorCount}`");
+            sb.AppendLine($"- **Advisory Warnings:** `{report.WarningCount}`");
+
+            sb.AppendLine();
             sb.AppendLine("### 📋 Quality Summary Table");
             sb.AppendLine();
             sb.AppendLine("| Severity | Rule | Location | Target | Actual vs Limit | Recommended Remediation |");
             sb.AppendLine("| :---: | :--- | :--- | :--- | :---: | :--- |");
 
-            foreach (var v in report.Violations)
+            var errors = report.Violations.Where(v => v.Severity == ViolationSeverity.Error).ToList();
+            var warnings = report.Violations.Where(v => v.Severity == ViolationSeverity.Warning).ToList();
+
+            // Display errors (up to 50 in table)
+            int displayedErrors = 0;
+            foreach (var v in errors.Take(50))
             {
-                string badge = v.Severity == ViolationSeverity.Error ? "❌ **Error**" : "⚠️ **Warning**";
+                displayedErrors++;
+                string badge = "❌ **Error**";
+                string relPath = GetRelativePath(v.TargetFile, workingDirectory);
+                string location = $"`{relPath}:{v.LineNumber}`";
+                string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Critical Error";
+
+                sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
+            }
+
+            if (errors.Count > 50)
+            {
+                sb.AppendLine($"| ❌ **Error** | *...and {errors.Count - 50} more critical error(s)* | See full issue report | - | - | Review `issues/latest_errors.md` for full breakdown |");
+            }
+
+            // Display warnings (up to 20 in summary table)
+            int displayedWarnings = 0;
+            int maxWarningsToShow = isPrComment ? 10 : 25;
+            foreach (var v in warnings.Take(maxWarningsToShow))
+            {
+                displayedWarnings++;
+                string badge = "⚠️ **Warning**";
                 string relPath = GetRelativePath(v.TargetFile, workingDirectory);
                 string location = $"`{relPath}:{v.LineNumber}`";
                 string metric = v.ThresholdValue > 0 ? $"**{v.ActualValue}** (Max: {v.ThresholdValue})" : "Advisory";
@@ -316,15 +365,23 @@ namespace CodeMonitor.Services
                 sb.AppendLine($"| {badge} | `{v.RuleId}` {v.RuleName} | {location} | `{v.MemberName}` | {metric} | {v.RecommendedFix} |");
             }
 
-            // Expandable Remediation Blueprints Section
-            var detailedViolations = report.Violations.Where(v => v.ActionSteps.Count > 0 || !string.IsNullOrWhiteSpace(v.CodeExample)).ToList();
-            if (detailedViolations.Count > 0)
+            if (warnings.Count > maxWarningsToShow)
+            {
+                sb.AppendLine($"| ⚠️ **Warning** | *...and {warnings.Count - maxWarningsToShow} more advisory warning(s)* | See artifacts/issues | - | - | Review full report in `issues/` and downloadable workflow artifacts |");
+            }
+
+            // Expandable Remediation Blueprints Section (top 15 errors + top 5 warnings)
+            var detailedErrors = errors.Where(v => v.ActionSteps.Count > 0 || !string.IsNullOrWhiteSpace(v.CodeExample)).Take(15).ToList();
+            var detailedWarnings = warnings.Where(v => v.ActionSteps.Count > 0 || !string.IsNullOrWhiteSpace(v.CodeExample)).Take(5).ToList();
+            var blueprintsToShow = detailedErrors.Concat(detailedWarnings).ToList();
+
+            if (blueprintsToShow.Count > 0)
             {
                 sb.AppendLine();
                 sb.AppendLine("### 🛠️ Remediation & Refactoring Blueprints");
                 sb.AppendLine();
 
-                foreach (var v in detailedViolations)
+                foreach (var v in blueprintsToShow)
                 {
                     string icon = v.Severity == ViolationSeverity.Error ? "❌" : "⚠️";
                     string relPath = GetRelativePath(v.TargetFile, workingDirectory);

@@ -1,3 +1,8 @@
+# 🛡️ Automated Code Quality Monitor Workflow
+
+Below is the complete, validated YAML code. Save this exact content into `.github/workflows/code-quality.yml`.
+
+```yaml
 name: Automated Code Quality Monitor
 
 on:
@@ -156,8 +161,13 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            if (fs.existsSync('pr-comment.md')) {
-              const body = fs.readFileSync('pr-comment.md', 'utf8');
+            let prCommentFile = 'pr-comment.md';
+            if (!fs.existsSync(prCommentFile) && fs.existsSync('github_review/pr-comment.md')) {
+              prCommentFile = 'github_review/pr-comment.md';
+            }
+
+            if (fs.existsSync(prCommentFile)) {
+              const body = fs.readFileSync(prCommentFile, 'utf8');
               try {
                 const { data: comments } = await github.rest.issues.listComments({
                   owner: context.repo.owner,
@@ -198,7 +208,11 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const errorFile = 'issues/latest_errors.md';
+            let errorFile = 'issues/latest_errors.md';
+            if (!fs.existsSync(errorFile) && fs.existsSync('github_review/issues/latest_errors.md')) {
+              errorFile = 'github_review/issues/latest_errors.md';
+            }
+
             const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
             const branchName = (context.payload.pull_request ? context.payload.pull_request.head.ref : context.ref || '').replace('refs/heads/', '');
             const commitSha = context.sha ? context.sha.substring(0, 7) : '';
@@ -286,7 +300,6 @@ jobs:
               if (contextLabel) issueLabels.push(contextLabel);
 
               if (existingLivingIssue) {
-                // UPDATE existing tracking issue (Living Issue Deduplication)
                 console.log(`🔄 Updating existing Issue #${existingLivingIssue.number} for ${contextTag || 'current run'} on commit ${commitSha}...`);
                 try {
                   await github.rest.issues.update({
@@ -308,7 +321,6 @@ jobs:
                   console.log('⚠️ Could not update existing issue:', updateErr.message);
                 }
               } else {
-                // CREATE initial living issue
                 console.log(`🚀 Creating initial GitHub Issue for blocking errors: ${title}`);
                 const issuePayload = {
                   owner: context.repo.owner,
@@ -357,11 +369,9 @@ jobs:
                                        issueBody.includes('Critical Blocking Errors');
                 if (!isQualityIssue) return false;
                 
-                // Match 1: Explicitly tagged for this specific PR or branch
                 if (contextLabel && issueLabels.includes(contextLabel)) return true;
                 if (contextTag && (title.includes(contextTag) || issueBody.includes(contextTag))) return true;
                 
-                // Match 2: Specifically targets a file that was modified & verified clean in this PR
                 if (modifiedFiles.length > 0) {
                   const touchesModifiedFile = modifiedFiles.some(file => {
                     const fileName = file.split('/').pop().split('\\').pop();
@@ -370,7 +380,6 @@ jobs:
                   if (touchesModifiedFile) return true;
                 }
                 
-                // Match 3: On direct main branch pushes with 0 errors (full repo verified clean), close open quality issues
                 if (!prNumber && (context.ref === 'refs/heads/main' || context.ref === 'refs/heads/master')) {
                   return true;
                 }
@@ -431,3 +440,4 @@ jobs:
           else
             echo "✅ Quality Gate passed."
           fi
+```
