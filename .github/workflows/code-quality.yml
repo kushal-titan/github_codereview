@@ -156,8 +156,13 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            if (fs.existsSync('pr-comment.md')) {
-              const body = fs.readFileSync('pr-comment.md', 'utf8');
+            let prCommentFile = 'pr-comment.md';
+            if (!fs.existsSync(prCommentFile) && fs.existsSync('github_review/pr-comment.md')) {
+              prCommentFile = 'github_review/pr-comment.md';
+            }
+            
+            if (fs.existsSync(prCommentFile)) {
+              const body = fs.readFileSync(prCommentFile, 'utf8');
               try {
                 const { data: comments } = await github.rest.issues.listComments({
                   owner: context.repo.owner,
@@ -198,7 +203,11 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const errorFile = 'issues/latest_errors.md';
+            let errorFile = 'issues/latest_errors.md';
+            if (!fs.existsSync(errorFile) && fs.existsSync('github_review/issues/latest_errors.md')) {
+              errorFile = 'github_review/issues/latest_errors.md';
+            }
+            
             const prNumber = context.payload.pull_request ? context.payload.pull_request.number : '';
             const branchName = (context.payload.pull_request ? context.payload.pull_request.head.ref : context.ref || '').replace('refs/heads/', '');
             const commitSha = context.sha ? context.sha.substring(0, 7) : '';
